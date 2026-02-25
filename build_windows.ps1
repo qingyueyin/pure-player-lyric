@@ -8,6 +8,7 @@ Set-Location -Path $PSScriptRoot
 
 $BuildMode = "Release"
 $finalOutputDir = Join-Path $PSScriptRoot "output"
+$ephemeralDir = "windows\flutter\ephemeral"
 
 Write-Host "Starting build process ($BuildMode Mode)..." -ForegroundColor Green
 
@@ -15,6 +16,11 @@ if (-not (Get-Command "flutter" -ErrorAction SilentlyContinue)) {
     Write-Error "Flutter command not found. Please ensure Flutter is installed and in your PATH."
     if (-not $NoPause) { Read-Host "Press Enter to exit..." }
     exit 1
+}
+
+if (Test-Path $ephemeralDir) {
+    Write-Host "Cleaning ephemeral directory to avoid symlink conflicts..." -ForegroundColor Yellow
+    Remove-Item -Path $ephemeralDir -Recurse -Force
 }
 
 $needPubGet = $true
