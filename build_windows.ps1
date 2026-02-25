@@ -9,6 +9,13 @@ Set-Location -Path $PSScriptRoot
 $BuildMode = "Release"
 $finalOutputDir = Join-Path $PSScriptRoot "output"
 $ephemeralDir = "windows\flutter\ephemeral"
+$logsDir = Join-Path $PSScriptRoot "logs"
+$timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+$logFile = Join-Path $logsDir "build_$timestamp.log"
+
+if (-not (Test-Path $logsDir)) {
+    New-Item -ItemType Directory -Force -Path $logsDir | Out-Null
+}
 
 Write-Host "Starting build process ($BuildMode Mode)..." -ForegroundColor Green
 
@@ -21,6 +28,14 @@ if (-not (Get-Command "flutter" -ErrorAction SilentlyContinue)) {
 if (Test-Path $ephemeralDir) {
     Write-Host "Cleaning ephemeral directory to avoid symlink conflicts..." -ForegroundColor Yellow
     Remove-Item -Path $ephemeralDir -Recurse -Force
+}
+
+$VerbosePreference = "Continue"
+$DebugPreference = "Continue"
+
+function Write-Log {
+    param([string]$Message)
+    $Message | Tee-Object -FilePath $logFile -Append | Out-Null
 }
 
 $needPubGet = $true
