@@ -93,7 +93,7 @@ BEGIN
             VALUE "FileDescription", "Pure Player Desktop Lyric" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "desktop_lyric" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2024 qingyueyin. All rights reserved." "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 qingyueyin. All rights reserved." "\0"
             VALUE "OriginalFilename", "desktop_lyric.exe" "\0"
             VALUE "ProductName", "Pure Player Desktop Lyric" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
