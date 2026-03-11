@@ -149,6 +149,9 @@ class LyricLineChangedMessage extends Message {
   final Duration length;
   final List<LyricWord>? words;
   final int? progressMs;
+  final String? nextContent;
+  final String? nextTranslation;
+  final List<LyricWord>? nextWords;
 
   const LyricLineChangedMessage(
     this.content,
@@ -156,6 +159,9 @@ class LyricLineChangedMessage extends Message {
     this.translation,
     this.words,
     this.progressMs,
+    this.nextContent,
+    this.nextTranslation,
+    this.nextWords,
   ]);
 
   factory LyricLineChangedMessage.fromJson(Map<String, dynamic> json) =>
@@ -177,6 +183,19 @@ class LyricWord {
       _$LyricWordFromJson(json);
 
   Map<String, dynamic> toJson() => _$LyricWordToJson(this);
+}
+
+@JsonSerializable()
+class PositionMessage {
+  final int wordIndex;
+  final double progress;
+
+  const PositionMessage(this.wordIndex, this.progress);
+
+  factory PositionMessage.fromJson(Map<String, dynamic> json) =>
+      _$PositionMessageFromJson(json);
+
+  Map<String, dynamic> toJson() => _$PositionMessageToJson(this);
 }
 
 /// player -> desktop lyric
@@ -225,11 +244,11 @@ class UnlockMessage extends Message {
   Map<String, dynamic> _toJson() => _$UnlockMessageToJson(this);
 }
 
-// abstract class DesktopLyricMessage {
-//   DesktopLyricMessage();
+abstract class DesktopLyricMessage {
+  DesktopLyricMessage();
 
-//   Map toMap() => {"type": "DesktopLyricMessage"};
-// }
+  Map toMap() => {"type": "DesktopLyricMessage"};
+}
 
 // enum PlayerAction {
 //   /// 暂停，也表示歌曲暂停播放的状态。可以由播放器发送到桌面歌词，也可以反过来。

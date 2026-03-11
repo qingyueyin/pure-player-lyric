@@ -16,6 +16,13 @@ add_executable(${BINARY_NAME} WIN32
   "runner.exe.manifest"
 )
 
+# If the icon file changes we need to recompile Runner.rc, otherwise CMake
+# doesn't know that it depends on the .ico and the old icon will be cached
+# in the build output.  The OBJECT_DEPENDS property tells CMake to rebuild the
+# resource object whenever the icon is modified.
+set_source_files_properties("Runner.rc" PROPERTIES
+  OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/resources/app_icon.ico")
+
 # Apply the standard set of build settings. This can be removed for applications
 # that need different build settings.
 apply_standard_settings(${BINARY_NAME})

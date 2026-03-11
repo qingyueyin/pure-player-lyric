@@ -61,17 +61,55 @@ $appIconResourcePath = "windows\runner\resources\app_icon.ico"
 $buildRoot = "build\windows"
 $exePath = "build\windows\x64\runner\$BuildMode\desktop_lyric.exe"
 
+function Update-RcVersion {
+    $pubspec = Join-Path $PSScriptRoot "pubspec.yaml"
+    if (-not (Test-Path $pubspec)) { return }
+    
+    $content = Get-Content -Path $pubspec -Raw -ErrorAction SilentlyContinue
+    if (-not $content) { return }
+    
+    $m = [regex]::Match($content, '(?m)^\s*version\s*:\s*([^\r\n]+)\s*$')
+    if (-not $m.Success) { return }
+    
+    $version = $m.Groups[1].Value.Trim()
+    
+    $rcPath = Join-Path $PSScriptRoot "windows\runner\Runner.rc"
+    if (-not (Test-Path $rcPath)) { return }
+    
+    $rcContent = Get-Content -Path $rcPath -Raw
+    
+    $parts = $version -split '\+'
+    $verNum = $parts[0]
+    $verParts = $verNum -split '\.'
+    
+    $major = if ($verParts.Length -gt 0) { $verParts[0] } else { "0" }
+    $minor = if ($verParts.Length -gt 1) { $verParts[1] } else { "0" }
+    $patch = if ($verParts.Length -gt 2) { $verParts[2] } else { "0" }
+    $build = if ($parts.Length -gt 1) { $parts[1] } else { "0" }
+    
+    $newNumber = "$major,$minor,$patch,$build"
+    $newString = """$version"""
+    
+    $rcContent = $rcContent -replace '#define VERSION_AS_NUMBER .+', "#define VERSION_AS_NUMBER $newNumber"
+    $rcContent = $rcContent -replace '#define VERSION_AS_STRING ".+"', "#define VERSION_AS_STRING $newString"
+    
+    Set-Content -Path $rcPath -Value $rcContent -NoNewline -ErrorAction SilentlyContinue
+    Write-Host "Updated Runner.rc version to $version" -ForegroundColor Green
+}
+
+Update-RcVersion
+
 if (-not (Test-Path $appIconResourcePath)) {
     Write-Warning "Icon not found: $appIconResourcePath. The application icon might be default."
 }
 else {
-    if ((Test-Path $exePath) -and (Test-Path $buildRoot)) {
-        $iconTime = (Get-Item $appIconResourcePath).LastWriteTime
-        $exeTime = (Get-Item $exePath).LastWriteTime
-        if ($iconTime -gt $exeTime) {
-            Write-Host "Icon updated; cleaning $buildRoot to force resource rebuild..." -ForegroundColor Yellow
-            Remove-Item -Path $buildRoot -Recurse -Force
-        }
+    # Always clear the previous build artifacts so that any changes
+    # to the resource files (icon/manifest) are picked up.  Without this step
+    # the cached object files can keep the previous icon which results in the
+    # compiled executable showing the wrong icon in Explorer.
+    if (Test-Path $buildRoot) {
+        Write-Host "Cleaning $buildRoot to ensure resources are rebuilt..." -ForegroundColor Yellow
+        Remove-Item -Path $buildRoot -Recurse -Force
     }
 }
 

@@ -4,6 +4,7 @@ import 'package:desktop_lyric/component/now_playing_info.dart';
 import 'package:desktop_lyric/desktop_lyric_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:window_manager/window_manager.dart';
 
 final LYRIC_TEXT_KEY = GlobalKey();
 final TRANSLATION_TEXT_KEY = GlobalKey();
@@ -13,7 +14,13 @@ final TEXT_DISPLAY_CONTROLLER = TextDisplayController();
 bool ALWAYS_SHOW_ACTION_ROW = false;
 
 List<Shadow> lyricTextShadows(Color color) {
-  return const [];
+  return [
+    Shadow(
+      color: Colors.black.withValues(alpha: 0.6),
+      offset: const Offset(0, 1),
+      blurRadius: 2,
+    ),
+  ];
 }
 
 Color lyricOutlineColor(Color color) {
@@ -21,7 +28,7 @@ Color lyricOutlineColor(Color color) {
 }
 
 double lyricOutlineWidth(double fontSize) {
-  return (fontSize * 0.07).clamp(1.0, 2.0).toDouble();
+  return (fontSize * 0.08).clamp(1.5, 4.0).toDouble();
 }
 
 Widget outlinedText({
@@ -34,11 +41,14 @@ Widget outlinedText({
   int? maxLines,
   TextOverflow? overflow,
   bool? softWrap,
+  bool applyShadow = true,
 }) {
   final strokePaint = Paint()
     ..style = PaintingStyle.stroke
     ..strokeWidth = outlineWidth
     ..color = outlineColor;
+
+  final textShadows = applyShadow ? lyricTextShadows(style.color ?? Colors.white) : null;
 
   return Stack(
     key: key,
@@ -46,7 +56,7 @@ Widget outlinedText({
     children: [
       Text(
         text,
-        style: style.copyWith(foreground: strokePaint, shadows: const []),
+        style: style.copyWith(foreground: strokePaint, shadows: textShadows),
         textAlign: textAlign,
         maxLines: maxLines,
         overflow: overflow,
@@ -54,7 +64,7 @@ Widget outlinedText({
       ),
       Text(
         text,
-        style: style,
+        style: style.copyWith(shadows: textShadows),
         textAlign: textAlign,
         maxLines: maxLines,
         overflow: overflow,
@@ -80,11 +90,7 @@ FontWeight lyricFontWeightFromInt(int weight) {
   };
 }
 
-enum LyricTextAlign {
-  left,
-  center,
-  right,
-}
+enum LyricTextAlign { left, center, right }
 
 class TextDisplayController extends ChangeNotifier {
   double lyricFontSize = 22.0;
@@ -97,7 +103,9 @@ class TextDisplayController extends ChangeNotifier {
   /// true: 使用指定的颜色
   /// false: 跟随播放器主题（默认）
   bool hasSpecifiedColor = false;
-  Color specifiedColor = Color(DesktopLyricController.instance.theme.value.primary);
+  Color specifiedColor = Color(
+    DesktopLyricController.instance.theme.value.primary,
+  );
 
   void increaseLyricFontSize() {
     if (lyricFontSize >= 48) return;
@@ -137,14 +145,12 @@ class TextDisplayController extends ChangeNotifier {
     notifyListeners();
   }
 
-  void increaseFontWeight({bool smallStep = false}) {
-    final step = smallStep ? 10 : 100;
-    setFontWeight(lyricFontWeight + step);
+  void increaseFontWeight() {
+    setFontWeight(lyricFontWeight + 100);
   }
 
-  void decreaseFontWeight({bool smallStep = false}) {
-    final step = smallStep ? 10 : 100;
-    setFontWeight(lyricFontWeight - step);
+  void decreaseFontWeight() {
+    setFontWeight(lyricFontWeight - 100);
   }
 
   /// 指定字体颜色

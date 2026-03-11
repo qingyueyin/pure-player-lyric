@@ -1,9 +1,16 @@
 import 'dart:io';
-import 'dart:isolate';
 
 import 'package:desktop_lyric/component/desktop_lyric_body.dart';
 import 'package:desktop_lyric/component/foreground.dart';
-import 'package:desktop_lyric/component/unlock_overlay.dart';
+import 'package:desktop_lyric/message.dart';
+import 'package:desktop_lyric/desktop_lyric_controller.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import 'dart:io';
+
+import 'package:desktop_lyric/component/desktop_lyric_body.dart';
+import 'package:desktop_lyric/component/foreground.dart';
 import 'package:desktop_lyric/message.dart';
 import 'package:desktop_lyric/desktop_lyric_controller.dart';
 import 'package:flutter/material.dart';
@@ -19,176 +26,107 @@ class ActionRow extends StatelessWidget {
     final theme = context.watch<ThemeChangedMessage>();
     const spacer = SizedBox(width: 8);
 
-    final textDisplayController = context.watch<TextDisplayController>();
-    final onSurface = Color(theme.onSurface);
+    final textDisplayController = context.read<TextDisplayController>();
 
-    void lockWindow() {
-      final className = win32.TEXT("FLUTTER_RUNNER_WIN32_WINDOW");
-      final windowName = win32.TEXT("desktop_lyric");
-      final found = win32.FindWindow(className, windowName);
-      win32.free(className);
-      win32.free(windowName);
-
-      hWnd = found != 0 ? found : win32.GetForegroundWindow();
-      if (hWnd == null) return;
-
-      final exStyle = win32.GetWindowLongPtr(
-        hWnd!,
-        win32.WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE,
-      );
-
-      win32.SetWindowLongPtr(
-        hWnd!,
-        win32.WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE,
-        exStyle |
-            win32.WINDOW_EX_STYLE.WS_EX_LAYERED |
-            win32.WINDOW_EX_STYLE.WS_EX_TRANSPARENT,
-      );
-
-      stdout.write(const ControlEventMessage(ControlEvent.lock).buildMessageJson());
-      Isolate.run(() => showUnlockOverlay(hWnd!));
-    }
-
-    final left = Row(
-      mainAxisSize: MainAxisSize.min,
+    return Stack(
+      alignment: Alignment.centerRight,
       children: [
-        GestureDetector(
-          onSecondaryTap: textDisplayController.decreaseLyricFontSize,
+        Padding(
+          padding: const EdgeInsets.only(right: 8),
           child: IconButton(
-            onPressed: textDisplayController.increaseLyricFontSize,
-            tooltip: "字号：左键放大 / 右键缩小 (${textDisplayController.lyricFontSize.toStringAsFixed(0)})",
-            color: onSurface,
-            icon: const Icon(Icons.text_increase),
-          ),
-        ),
-        spacer,
-        IconButton(
-          onPressed: textDisplayController.switchLyricTextAlign,
-          tooltip: "切换歌词对齐方向",
-          color: onSurface,
-          icon: Icon(
-            switch (textDisplayController.lyricTextAlign) {
-              LyricTextAlign.left => Icons.format_align_left,
-              LyricTextAlign.center => Icons.format_align_center,
-              LyricTextAlign.right => Icons.format_align_right,
+            onPressed: () async {
+              final hWnd = win32.GetForegroundWindow();
+
+              if (hWnd != 0) {
+                final exStyle = win32.GetWindowLongPtr(
+                  hWnd,
+                  win32.WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE,
+                );
+
+                win32.SetWindowLongPtr(
+                  hWnd,
+                  win32.WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE,
+                  exStyle |
+                      win32.WINDOW_EX_STYLE.WS_EX_LAYERED |
+                      win32.WINDOW_EX_STYLE.WS_EX_TRANSPARENT,
+                );
+
+                stdout.write(
+                  const ControlEventMessage(ControlEvent.lock)
+                      .buildMessageJson(),
+                );
+              }
             },
+            color: Color(theme.onSurface),
+            icon: const Icon(Icons.lock),
           ),
         ),
-        spacer,
-        GestureDetector(
-          onSecondaryTap: () => textDisplayController.decreaseFontWeight(),
-          child: IconButton(
-            onPressed: () => textDisplayController.increaseFontWeight(),
-            onLongPress: () => textDisplayController.increaseFontWeight(smallStep: true),
-            tooltip: "粗细：左键加粗 / 右键减粗 / 长按细调 (${textDisplayController.lyricFontWeight})",
-            color: onSurface,
-            icon: Text(
-              "B",
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: onSurface,
-                fontSize: 16,
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            IconButton(
+              onPressed: textDisplayController.increaseLyricFontSize,
+              color: Color(theme.onSurface),
+              icon: const Icon(Icons.text_increase),
+            ),
+            spacer,
+            IconButton(
+              onPressed: textDisplayController.decreaseLyricFontSize,
+              color: Color(theme.onSurface),
+              icon: const Icon(Icons.text_decrease),
+            ),
+            spacer,
+            IconButton(
+              onPressed: () {
+                stdout.write(
+                  const ControlEventMessage(ControlEvent.previousAudio)
+                      .buildMessageJson(),
+                );
+              },
+              color: Color(theme.onSurface),
+              icon: const Icon(Icons.skip_previous),
+            ),
+            spacer,
+            ValueListenableBuilder(
+              valueListenable: DesktopLyricController.instance.isPlaying,
+              builder: (context, isPlaying, _) => IconButton(
+                onPressed: () {
+                  stdout.write(
+                    ControlEventMessage(
+                      isPlaying ? ControlEvent.pause : ControlEvent.start,
+                    ).buildMessageJson(),
+                  );
+                },
+                color: Color(theme.onSurface),
+                icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow),
               ),
             ),
-          ),
+            spacer,
+            IconButton(
+              onPressed: () {
+                stdout.write(
+                  const ControlEventMessage(ControlEvent.nextAudio)
+                      .buildMessageJson(),
+                );
+              },
+              color: Color(theme.onSurface),
+              icon: const Icon(Icons.skip_next),
+            ),
+            spacer,
+            const _ShowColorSelectorBtn(),
+            spacer,
+            IconButton(
+              onPressed: () {
+                stdout.write(
+                  const ControlEventMessage(ControlEvent.close)
+                      .buildMessageJson(),
+                );
+              },
+              color: Color(theme.onSurface),
+              icon: const Icon(Icons.close),
+            ),
+          ],
         ),
-      ],
-    );
-
-    final center = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        IconButton(
-          onPressed: () {
-            stdout.write(
-              const ControlEventMessage(ControlEvent.previousAudio)
-                  .buildMessageJson(),
-            );
-          },
-          color: onSurface,
-          icon: const Icon(Icons.skip_previous),
-        ),
-        spacer,
-        ValueListenableBuilder(
-          valueListenable: DesktopLyricController.instance.isPlaying,
-          builder: (context, isPlaying, _) => IconButton(
-            onPressed: () {
-              stdout.write(
-                ControlEventMessage(
-                  isPlaying ? ControlEvent.pause : ControlEvent.start,
-                ).buildMessageJson(),
-              );
-            },
-            color: onSurface,
-            icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow),
-          ),
-        ),
-        spacer,
-        IconButton(
-          onPressed: () {
-            stdout.write(
-              const ControlEventMessage(ControlEvent.nextAudio)
-                  .buildMessageJson(),
-            );
-          },
-          color: onSurface,
-          icon: const Icon(Icons.skip_next),
-        ),
-      ],
-    );
-
-    final right = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        IconButton(
-          onPressed: textDisplayController.toggleLyricTranslation,
-          tooltip: textDisplayController.showLyricTranslation
-              ? "歌词翻译：显示"
-              : "歌词翻译：隐藏",
-          color: textDisplayController.showLyricTranslation
-              ? onSurface
-              : onSurface.withValues(alpha: 0.5),
-          icon: const Icon(Icons.translate),
-        ),
-        spacer,
-        IconButton(
-          onPressed: textDisplayController.toggleNowPlayingInfo,
-          tooltip: textDisplayController.showNowPlayingInfo
-              ? "关闭曲目信息"
-              : "显示曲目信息",
-          color: onSurface,
-          icon: Icon(
-            textDisplayController.showNowPlayingInfo
-                ? Icons.info_outline
-                : Icons.info,
-          ),
-        ),
-        spacer,
-        const _ShowColorSelectorBtn(),
-        spacer,
-        IconButton(
-          onPressed: () {
-            stdout.write(
-              const ControlEventMessage(ControlEvent.close).buildMessageJson(),
-            );
-          },
-          color: onSurface,
-          icon: const Icon(Icons.close),
-        ),
-        spacer,
-        IconButton(
-          onPressed: lockWindow,
-          color: onSurface,
-          icon: const Icon(Icons.lock),
-        ),
-      ],
-    );
-
-    return Row(
-      children: [
-        Expanded(child: Align(alignment: Alignment.centerLeft, child: left)),
-        Expanded(child: Align(alignment: Alignment.center, child: center)),
-        Expanded(child: Align(alignment: Alignment.centerRight, child: right)),
       ],
     );
   }
@@ -202,7 +140,7 @@ class _ShowColorSelectorBtn extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = context.watch<ThemeChangedMessage>();
-    final onSurface = Color(theme.onSurface);
+    final onSurface = Color(theme.onSurface).withValues(alpha: 1.0);
     return MenuAnchor(
       controller: _COLOR_SELECTOR_CONTROLLER,
       consumeOutsideTap: true,
@@ -219,10 +157,7 @@ class _ShowColorSelectorBtn extends StatelessWidget {
       menuChildren: [
         Padding(
           padding: const EdgeInsets.only(left: 4),
-          child: Text(
-            "背景不透明度",
-            style: TextStyle(color: onSurface),
-          ),
+          child: Text("背景不透明度", style: TextStyle(color: onSurface)),
         ),
         SliderTheme(
           data: SliderThemeData(
@@ -244,17 +179,14 @@ class _ShowColorSelectorBtn extends StatelessWidget {
         ),
         Padding(
           padding: const EdgeInsets.only(left: 4),
-          child: Text(
-            "文字颜色",
-            style: TextStyle(color: onSurface),
-          ),
+          child: Text("文字颜色", style: TextStyle(color: onSurface)),
         ),
         Wrap(
           children: List.generate(
             Colors.primaries.length,
             (i) => _ColorTile(color: Colors.primaries[i]),
           ),
-        )
+        ),
       ],
       builder: (context, controller, _) => IconButton(
         onPressed: () {
@@ -301,10 +233,12 @@ class _ColorTile extends StatelessWidget {
 
             _COLOR_SELECTOR_CONTROLLER.close();
           },
-          child: textDisplayController.hasSpecifiedColor &&
+          child:
+              textDisplayController.hasSpecifiedColor &&
                   textDisplayController.specifiedColor == color
               ? const Center(
-                  child: Icon(Icons.check, color: Colors.white, size: 16))
+                  child: Icon(Icons.check, color: Colors.white, size: 16),
+                )
               : const SizedBox.shrink(),
         ),
       ),

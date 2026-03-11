@@ -37,7 +37,7 @@ class _LyricLineViewState extends State<LyricLineView> {
 
         scrollController.animateTo(
           0,
-          duration: const Duration(milliseconds: 140),
+          duration: const Duration(milliseconds: 180),
           curve: Curves.easeOutCubic,
         );
         if (scrollController.position.maxScrollExtent > 0) {
@@ -47,9 +47,12 @@ class _LyricLineViewState extends State<LyricLineView> {
             if (!scrollController.hasClients) return;
             if (token != _scrollToken) return;
 
+            final scrollDuration = Duration(
+              milliseconds: (lastTime.inMilliseconds * 0.8).clamp(200, 800).toInt(),
+            );
             scrollController.animateTo(
               scrollController.position.maxScrollExtent,
-              duration: lastTime,
+              duration: scrollDuration,
               curve: Curves.easeOutQuart,
             );
           });

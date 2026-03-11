@@ -13,6 +13,7 @@ class WordLyricText extends StatefulWidget {
   final int fontWeight;
   final TextAlign textAlign;
   final ValueListenable<bool> isPlaying;
+  final double alpha;
 
   const WordLyricText({
     super.key,
@@ -22,6 +23,7 @@ class WordLyricText extends StatefulWidget {
     required this.fontWeight,
     required this.textAlign,
     required this.isPlaying,
+    this.alpha = 1.0,
   });
 
   @override
@@ -72,11 +74,13 @@ class _WordLyricTextState extends State<WordLyricText> with SingleTickerProvider
     _baseProgressMs = line.progressMs ?? 0;
     _progressMs.value = _baseProgressMs;
     final words = line.words ?? const [];
+    
+    // Detect if startMs is absolute time (>> progressMs) and convert to relative
+    final firstWordStartMs = words.isNotEmpty ? words[0].startMs : 0;
+    final isAbsoluteTime = firstWordStartMs > _baseProgressMs * 10;
+    final timeOffset = isAbsoluteTime ? firstWordStartMs : 0;
+    
     final fontWeight = lyricFontWeightFromInt(widget.fontWeight);
-
-    final inactive = widget.color.withValues(alpha: 0.22);
-    final active = widget.color;
-    final outline = lyricOutlineColor(widget.color);
     final outlineWidth = lyricOutlineWidth(widget.fontSize);
 
     final layouts = <_WordLayout>[];
@@ -88,7 +92,7 @@ class _WordLyricTextState extends State<WordLyricText> with SingleTickerProvider
         style: TextStyle(
           fontSize: widget.fontSize,
           fontWeight: fontWeight,
-          color: inactive,
+          color: widget.color.withValues(alpha: 0.22 * widget.alpha),
         ),
       );
       final activeSpan = TextSpan(
@@ -96,7 +100,7 @@ class _WordLyricTextState extends State<WordLyricText> with SingleTickerProvider
         style: TextStyle(
           fontSize: widget.fontSize,
           fontWeight: fontWeight,
-          color: active,
+          color: widget.color.withValues(alpha: widget.alpha),
         ),
       );
 
@@ -116,7 +120,7 @@ class _WordLyricTextState extends State<WordLyricText> with SingleTickerProvider
       final strokePaint = Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = outlineWidth
-        ..color = outline;
+        ..color = lyricOutlineColor(widget.color);
       final outlinePainter = TextPainter(
         text: TextSpan(
           text: w.content,
@@ -137,7 +141,7 @@ class _WordLyricTextState extends State<WordLyricText> with SingleTickerProvider
 
       layouts.add(
         _WordLayout(
-          startMs: w.startMs,
+          startMs: w.startMs - timeOffset,
           lengthMs: w.lengthMs,
           x: x,
           width: width,
@@ -204,6 +208,8 @@ class _WordLyricTextState extends State<WordLyricText> with SingleTickerProvider
               layouts: _layouts,
               progressMs: progress,
               textAlign: widget.textAlign,
+              textColor: widget.color,
+              alpha: widget.alpha,
             ),
           ),
         );
@@ -216,11 +222,15 @@ class _WordLyricPainter extends CustomPainter {
   final List<_WordLayout> layouts;
   final int progressMs;
   final TextAlign textAlign;
+  final Color textColor;
+  final double alpha;
 
   _WordLyricPainter({
     required this.layouts,
     required this.progressMs,
     required this.textAlign,
+    required this.textColor,
+    required this.alpha,
   });
 
   @override
@@ -234,42 +244,74 @@ class _WordLyricPainter extends CustomPainter {
       _ => 0.0,
     };
 
-    for (final w in layouts) {
+    // Calculate current word index and progress
+    int currentWordIndex = -1;
+    double wordProgress = 0.0;
+    
+    for (int i = 0; i < layouts.length; i++) {
+      final w = layouts[i];
+      final wordStart = w.startMs;
+      final wordEnd = w.startMs + w.lengthMs;
+      
+      if (progressMs >= wordStart && progressMs < wordEnd) {
+        currentWordIndex = i;
+        wordProgress = w.lengthMs > 0 
+            ? (progressMs - wordStart) / w.lengthMs 
+            : 0.0;
+        break;
+      } else if (progressMs >= wordEnd) {
+        currentWordIndex = i;
+        wordProgress = 1.0;
+      }
+    }
+    
+    for (int i = 0; i < layouts.length; i++) {
+      final w = layouts[i];
       final dx = startX + w.x;
       final dy = 0.0;
+      final offset = Offset(dx, dy);
 
-      final outlineOffset = Offset(dx, dy);
-      w.outline.paint(canvas, outlineOffset);
-      w.inactive.paint(canvas, outlineOffset);
-
-      final wordLen = max(w.lengthMs, 0);
-      final wordStart = w.startMs.toDouble();
-      final wordEnd = wordStart + wordLen;
-      final pos = progressMs.toDouble();
-      final p = wordLen <= 0
-          ? (pos >= wordEnd ? 1.0 : 0.0)
-          : ((pos - wordStart) / wordLen).clamp(0.0, 1.0);
-      if (p <= 0.0) continue;
-
-      final rect = Rect.fromLTWH(dx, dy, w.width, w.height);
-      final fade = (p + 0.05).clamp(0.0, 1.0);
-
-      canvas.saveLayer(rect, Paint());
-      w.outline.paint(canvas, outlineOffset);
-      w.active.paint(canvas, outlineOffset);
-      final maskPaint = Paint()
-        ..blendMode = BlendMode.dstIn
-        ..shader = LinearGradient(
-          colors: const [
-            Colors.white,
-            Colors.white,
-            Colors.transparent,
-            Colors.transparent,
-          ],
-          stops: [0.0, p, fade, 1.0],
-        ).createShader(rect);
-      canvas.drawRect(rect, maskPaint);
-      canvas.restore();
+      if (i == currentWordIndex && wordProgress > 0) {
+        // Use ShaderMask for smooth gradient effect (karaoke style)
+        final rect = Rect.fromLTWH(dx, dy, w.width, w.height);
+        
+        // Draw outline first
+        w.outline.paint(canvas, offset);
+        
+        // Draw with gradient mask for current word
+        final inactiveColor = textColor.withValues(alpha: 0.22 * alpha);
+        final activeColor = textColor.withValues(alpha: alpha);
+        
+        canvas.saveLayer(rect, Paint());
+        w.active.paint(canvas, offset);
+        
+        final gradientPaint = Paint()
+          ..blendMode = BlendMode.dstIn
+          ..shader = LinearGradient(
+            colors: [
+              activeColor,
+              activeColor,
+              inactiveColor,
+              inactiveColor,
+            ],
+            stops: [
+              0.0,
+              (wordProgress * 0.8).clamp(0.0, 1.0),
+              (wordProgress * 0.8 + 0.2).clamp(0.0, 1.0),
+              1.0,
+            ],
+          ).createShader(rect);
+        canvas.drawRect(rect, gradientPaint);
+        canvas.restore();
+      } else if (i < currentWordIndex) {
+        // Already passed words - fully highlighted
+        w.outline.paint(canvas, offset);
+        w.active.paint(canvas, offset);
+      } else {
+        // Not yet reached words - inactive
+        w.outline.paint(canvas, offset);
+        w.inactive.paint(canvas, offset);
+      }
     }
   }
 

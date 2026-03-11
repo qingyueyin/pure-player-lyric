@@ -16,7 +16,7 @@ class LyricLineDisplayArea extends StatelessWidget {
 
     final textColor = textDisplayController.hasSpecifiedColor
         ? textDisplayController.specifiedColor
-        : Color(theme.primary);
+        : Color(theme.primary).withValues(alpha: 1.0);
     final textAlign = switch (textDisplayController.lyricTextAlign) {
       LyricTextAlign.left => TextAlign.left,
       LyricTextAlign.center => TextAlign.center,
@@ -110,26 +110,13 @@ class LyricLineDisplayArea extends StatelessWidget {
         );
 
         return AnimatedSwitcher(
-          duration: const Duration(milliseconds: 220),
-          switchInCurve: const Cubic(0.2, 0.0, 0.0, 1.0),
-          switchOutCurve: const Cubic(0.2, 0.0, 0.0, 1.0),
+          duration: const Duration(milliseconds: 150),
+          switchInCurve: Curves.easeOut,
+          switchOutCurve: Curves.easeIn,
           transitionBuilder: (child, animation) {
-            final fade = CurvedAnimation(
-              parent: animation,
-              curve: Curves.easeOutCubic,
-            );
             return FadeTransition(
-              opacity: fade,
-              child: SlideTransition(
-                position: Tween<Offset>(
-                  begin: const Offset(0.0, 0.01),
-                  end: Offset.zero,
-                ).animate(fade),
-                child: ScaleTransition(
-                  scale: Tween<double>(begin: 0.98, end: 1.0).animate(fade),
-                  child: child,
-                ),
-              ),
+              opacity: animation,
+              child: child,
             );
           },
           child: child,

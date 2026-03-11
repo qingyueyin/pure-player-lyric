@@ -6,6 +6,8 @@ import 'package:window_manager/window_manager.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:win32/win32.dart' as win32;
 
+int? hWnd;
+
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
@@ -18,24 +20,25 @@ void main(List<String> args) async {
     skipTaskbar: true,
     titleBarStyle: TitleBarStyle.hidden,
     alwaysOnTop: true,
-    minimumSize: Size(400, 122),
-    maximumSize: Size(2400, 122),
+    minimumSize: Size(400, 80),
+    maximumSize: Size(2400, 600),
   );
   windowManager.waitUntilReadyToShow(windowOptions, () async {
     await windowManager.setAsFrameless();
     await windowManager.show();
     final className = win32.TEXT("FLUTTER_RUNNER_WIN32_WINDOW");
     final windowName = win32.TEXT("desktop_lyric");
-    final hWnd = win32.FindWindow(className, windowName);
+    final foundHWnd = win32.FindWindow(className, windowName);
     win32.free(className);
     win32.free(windowName);
-    if (hWnd != 0) {
+    if (foundHWnd != 0) {
+      hWnd = foundHWnd;
       final exStyle = win32.GetWindowLongPtr(
-        hWnd,
+        foundHWnd,
         win32.WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE,
       );
       win32.SetWindowLongPtr(
-        hWnd,
+        foundHWnd,
         win32.WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE,
         (exStyle | win32.WINDOW_EX_STYLE.WS_EX_TOOLWINDOW) &
             ~win32.WINDOW_EX_STYLE.WS_EX_APPWINDOW,
@@ -70,11 +73,20 @@ class DesktopLyricApp extends StatelessWidget {
     Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hans'),
     Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hant'),
     Locale.fromSubtags(
-        languageCode: 'zh', scriptCode: 'Hans', countryCode: 'CN'),
+      languageCode: 'zh',
+      scriptCode: 'Hans',
+      countryCode: 'CN',
+    ),
     Locale.fromSubtags(
-        languageCode: 'zh', scriptCode: 'Hant', countryCode: 'TW'),
+      languageCode: 'zh',
+      scriptCode: 'Hant',
+      countryCode: 'TW',
+    ),
     Locale.fromSubtags(
-        languageCode: 'zh', scriptCode: 'Hant', countryCode: 'HK'),
+      languageCode: 'zh',
+      scriptCode: 'Hant',
+      countryCode: 'HK',
+    ),
     Locale("en", "US"),
   ];
 }

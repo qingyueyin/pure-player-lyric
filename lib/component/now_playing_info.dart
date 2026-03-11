@@ -14,7 +14,7 @@ class NowPlayingInfo extends StatelessWidget {
 
     final textColor = textDisplayController.hasSpecifiedColor
         ? textDisplayController.specifiedColor
-        : Color(theme.primary);
+        : Color(theme.primary).withValues(alpha: 1.0);
     final textStyle = DefaultTextStyle.of(context).style.merge(
       TextStyle(
         color: textColor,

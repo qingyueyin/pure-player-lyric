@@ -96,6 +96,11 @@ LyricLineChangedMessage _$LyricLineChangedMessageFromJson(
       ?.map((e) => LyricWord.fromJson(e as Map<String, dynamic>))
       .toList(),
   (json['progressMs'] as num?)?.toInt(),
+  json['nextContent'] as String?,
+  json['nextTranslation'] as String?,
+  (json['nextWords'] as List<dynamic>?)
+      ?.map((e) => LyricWord.fromJson(e as Map<String, dynamic>))
+      .toList(),
 );
 
 Map<String, dynamic> _$LyricLineChangedMessageToJson(
@@ -106,6 +111,9 @@ Map<String, dynamic> _$LyricLineChangedMessageToJson(
   'length': instance.length.inMicroseconds,
   'words': instance.words,
   'progressMs': instance.progressMs,
+  'nextContent': instance.nextContent,
+  'nextTranslation': instance.nextTranslation,
+  'nextWords': instance.nextWords,
 };
 
 LyricWord _$LyricWordFromJson(Map<String, dynamic> json) => LyricWord(
@@ -119,6 +127,18 @@ Map<String, dynamic> _$LyricWordToJson(LyricWord instance) => <String, dynamic>{
   'lengthMs': instance.lengthMs,
   'content': instance.content,
 };
+
+PositionMessage _$PositionMessageFromJson(Map<String, dynamic> json) =>
+    PositionMessage(
+      (json['wordIndex'] as num).toInt(),
+      (json['progress'] as num).toDouble(),
+    );
+
+Map<String, dynamic> _$PositionMessageToJson(PositionMessage instance) =>
+    <String, dynamic>{
+      'wordIndex': instance.wordIndex,
+      'progress': instance.progress,
+    };
 
 ThemeModeChangedMessage _$ThemeModeChangedMessageFromJson(
   Map<String, dynamic> json,

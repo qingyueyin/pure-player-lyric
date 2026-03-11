@@ -3,10 +3,11 @@ import 'dart:io';
 
 import 'package:desktop_lyric/message.dart';
 import 'package:flutter/material.dart';
-
+import 'package:desktop_lyric/main.dart' as main_lib show hWnd;
 import 'package:win32/win32.dart' as win32;
 
-int? hWnd;
+int? get hWnd => main_lib.hWnd;
+set hWnd(int? value) => main_lib.hWnd = value;
 
 class DesktopLyricController {
   ValueNotifier<bool> isPlaying = ValueNotifier(false);
@@ -110,7 +111,6 @@ class DesktopLyricController {
             hWnd!,
             win32.WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE,
           );
-
           win32.SetWindowLongPtr(
             hWnd!,
             win32.WINDOW_LONG_PTR_INDEX.GWL_EXSTYLE,
@@ -119,6 +119,8 @@ class DesktopLyricController {
                 ~win32.WINDOW_EX_STYLE.WS_EX_TRANSPARENT,
           );
         }
+      } else if (type == 'PositionMessage') {
+        // PositionMessage is sent every 20ms but we don't need it since we calculate progress ourselves
       }
     } catch (err, stack) {
       stderr.write(err);
