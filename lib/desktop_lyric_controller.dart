@@ -123,31 +123,21 @@ class DesktopLyricController {
     return _instance!;
   }
 
-  String _stdinBuffer = '';
+  final MessageFrameDecoder _stdinDecoder = MessageFrameDecoder();
 
   DesktopLyricController._() {
     lyricLine.addListener(_handleLyricLineChanged);
     stdin.transform(utf8.decoder).listen((event) {
-      _stdinBuffer += event;
-      while (true) {
-        final idx = _stdinBuffer.indexOf('\n');
-        if (idx < 0) break;
-        final line = _stdinBuffer.substring(0, idx).trimRight();
-        _stdinBuffer = _stdinBuffer.substring(idx + 1);
-        if (line.isEmpty) continue;
-        _handleMessageLine(line);
-      }
-
-      if (!_stdinBuffer.contains('\n')) {
-        final candidate = _stdinBuffer.trim();
-        if (candidate.startsWith('{') && candidate.endsWith('}')) {
-          try {
-            _handleMessageLine(candidate);
-            _stdinBuffer = '';
-          } catch (_) {}
-        }
-      }
+      _stdinDecoder.add(event, _handleMessageLine);
     });
+  }
+
+  static void sendMessage(Message message) {
+    stdout.writeln(message.buildMessageJson());
+  }
+
+  static void sendControlEvent(ControlEvent event) {
+    sendMessage(ControlEventMessage(event));
   }
 
   void _handleMessageLine(String raw) {

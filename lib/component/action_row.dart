@@ -53,11 +53,7 @@ class ActionRow extends StatelessWidget {
         spacer,
         IconButton(
           onPressed: () {
-            stdout.write(
-              const ControlEventMessage(
-                ControlEvent.previousAudio,
-              ).buildMessageJson(),
-            );
+            DesktopLyricController.sendControlEvent(ControlEvent.previousAudio);
           },
           color: Color(theme.onSurface),
           icon: const Icon(Icons.skip_previous),
@@ -67,10 +63,8 @@ class ActionRow extends StatelessWidget {
           valueListenable: DesktopLyricController.instance.isPlaying,
           builder: (context, isPlaying, _) => IconButton(
             onPressed: () {
-              stdout.write(
-                ControlEventMessage(
-                  isPlaying ? ControlEvent.pause : ControlEvent.start,
-                ).buildMessageJson(),
+              DesktopLyricController.sendControlEvent(
+                isPlaying ? ControlEvent.pause : ControlEvent.start,
               );
             },
             color: Color(theme.onSurface),
@@ -80,11 +74,7 @@ class ActionRow extends StatelessWidget {
         spacer,
         IconButton(
           onPressed: () {
-            stdout.write(
-              const ControlEventMessage(
-                ControlEvent.nextAudio,
-              ).buildMessageJson(),
-            );
+            DesktopLyricController.sendControlEvent(ControlEvent.nextAudio);
           },
           color: Color(theme.onSurface),
           icon: const Icon(Icons.skip_next),
@@ -92,9 +82,7 @@ class ActionRow extends StatelessWidget {
         spacer,
         IconButton(
           onPressed: () {
-            stdout.write(
-              const ControlEventMessage(ControlEvent.close).buildMessageJson(),
-            );
+            DesktopLyricController.sendControlEvent(ControlEvent.close);
           },
           color: Color(theme.onSurface),
           icon: const Icon(Icons.close),
