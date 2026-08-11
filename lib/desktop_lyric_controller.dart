@@ -6,14 +6,21 @@ import 'package:pure_player_lyric/component/foreground.dart';
 import 'package:pure_player_lyric/message.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:pure_player_lyric/main.dart' as main_lib show hWnd;
 import 'package:win32/win32.dart' as win32;
 
 int? get hWnd => main_lib.hWnd;
 set hWnd(int? value) => main_lib.hWnd = value;
 
+const int _setClickThroughMessage = win32.WM_APP + 0x3D1;
+const int _setUnlockButtonAlignmentMessage = win32.WM_APP + 0x3D3;
+const int _setUnlockButtonColorMessage = win32.WM_APP + 0x3D4;
+const MethodChannel _windowChannel = MethodChannel('pure_player_lyric/window');
+
 class DesktopLyricController {
   ValueNotifier<bool> isPlaying = ValueNotifier(false);
+  ValueNotifier<bool> isLocked = ValueNotifier(false);
   ValueNotifier<bool> isDarkMode = ValueNotifier(false);
   ValueNotifier<ThemeChangedMessage> theme = ValueNotifier(
     ThemeChangedMessage(
@@ -37,6 +44,8 @@ class DesktopLyricController {
   static const int _maxRetainedLineProgress = 8;
   int? _activeLineId;
   int _activeLineLengthMs = 0;
+  bool _windowInteractionActive = false;
+  bool _hiddenForPause = false;
 
   ValueListenable<LyricProgressChangedMessage> progressForLine(int? lineId) {
     if (lineId == null) return lyricProgress;
@@ -127,6 +136,8 @@ class DesktopLyricController {
 
   DesktopLyricController._() {
     lyricLine.addListener(_handleLyricLineChanged);
+    isPlaying.addListener(syncWindowVisibility);
+    _windowChannel.setMethodCallHandler(_handleWindowMethod);
     stdin.transform(utf8.decoder).listen((event) {
       _stdinDecoder.add(event, _handleMessageLine);
     });
@@ -138,6 +149,53 @@ class DesktopLyricController {
 
   static void sendControlEvent(ControlEvent event) {
     sendMessage(ControlEventMessage(event));
+  }
+
+  Future<void> _handleWindowMethod(MethodCall call) async {
+    if (call.method != 'unlock') return;
+    setLocked(false);
+    sendMessage(const UnlockMessage());
+  }
+
+  void setLocked(bool value) {
+    isLocked.value = value;
+    final windowHwnd = hWnd;
+    if (windowHwnd == null || windowHwnd == 0) return;
+    syncUnlockButtonStyle();
+    win32.PostMessage(windowHwnd, _setClickThroughMessage, value ? 1 : 0, 0);
+  }
+
+  void syncUnlockButtonStyle() {
+    final windowHwnd = hWnd;
+    if (windowHwnd == null || windowHwnd == 0) return;
+    final currentTheme = theme.value;
+    win32.PostMessage(
+      windowHwnd,
+      _setUnlockButtonAlignmentMessage,
+      textDisplayController.lyricTextAlign.index,
+      0,
+    );
+    win32.PostMessage(
+      windowHwnd,
+      _setUnlockButtonColorMessage,
+      currentTheme.onSurface,
+      0,
+    );
+  }
+
+  void setWindowInteractionActive(bool value) {
+    _windowInteractionActive = value;
+    if (!value) syncWindowVisibility();
+  }
+
+  void syncWindowVisibility() {
+    final windowHwnd = hWnd;
+    if (windowHwnd == null || windowHwnd == 0) return;
+    final shouldHide = textDisplayController.hideOnPause && !isPlaying.value;
+    if (shouldHide && _windowInteractionActive) return;
+    if (_hiddenForPause == shouldHide) return;
+    win32.ShowWindow(windowHwnd, shouldHide ? win32.SW_HIDE : win32.SW_SHOWNA);
+    _hiddenForPause = shouldHide;
   }
 
   void _handleMessageLine(String raw) {
@@ -185,18 +243,14 @@ class DesktopLyricController {
         final themeMessage = ThemeChangedMessage.fromJson(content);
         isDarkMode.value = themeMessage.darkMode;
         theme.value = themeMessage;
+        syncUnlockButtonStyle();
       } else if (type == getMessageTypeName<DesktopLyricConfigMessage>()) {
         final config = DesktopLyricConfigMessage.fromJson(content);
         textDisplayController.applyConfig(config.toJson());
+        syncUnlockButtonStyle();
+        syncWindowVisibility();
       } else if (type == getMessageTypeName<UnlockMessage>()) {
-        if (hWnd != null) {
-          final exStyle = win32.GetWindowLongPtr(hWnd!, win32.GWL_EXSTYLE);
-          win32.SetWindowLongPtr(
-            hWnd!,
-            win32.GWL_EXSTYLE,
-            exStyle & ~win32.WS_EX_LAYERED & ~win32.WS_EX_TRANSPARENT,
-          );
-        }
+        setLocked(false);
       }
     } catch (err, stack) {
       stderr.write(err);

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ffi';
 
 import 'package:pure_player_lyric/component/foreground.dart';
+import 'package:pure_player_lyric/desktop_lyric_controller.dart';
 import 'package:pure_player_lyric/message.dart';
 import 'package:ffi/ffi.dart' as ffi;
 import 'package:flutter/material.dart';
@@ -24,35 +25,52 @@ class DesktopLyricBody extends StatefulWidget {
 
 class _DesktopLyricBodyState extends State<DesktopLyricBody> {
   bool isHovering = false;
+  bool _isResizing = false;
+  Timer? _resizeReleaseTimer;
   int? _hWnd;
   int? _startCursorX;
   int? _startCursorY;
   int? _startWindowLeft;
   int? _startWindowTop;
-  Timer? _pinTimer;
 
   @override
   void initState() {
     super.initState();
-    _pinTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!textDisplayController.enablePinTop) return;
-      final hWnd = _ensureHwnd();
-      if (hWnd == null) return;
-      win32.SetWindowPos(
-        hWnd,
-        win32.HWND_TOPMOST,
-        0, 0, 0, 0,
-        win32.SWP_NOMOVE |
-            win32.SWP_NOSIZE |
-            win32.SWP_NOACTIVATE,
-      );
-    });
+    DesktopLyricController.instance.isLocked.addListener(_handleLockChanged);
+    textDisplayController.addListener(_syncPinTop);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncPinTop());
   }
 
   @override
   void dispose() {
-    _pinTimer?.cancel();
+    _resizeReleaseTimer?.cancel();
+    DesktopLyricController.instance.isLocked.removeListener(_handleLockChanged);
+    textDisplayController.removeListener(_syncPinTop);
+    if (_isResizing) {
+      DesktopLyricController.instance.setWindowInteractionActive(false);
+    }
     super.dispose();
+  }
+
+  void _handleLockChanged() {
+    if (!DesktopLyricController.instance.isLocked.value || !isHovering) return;
+    setState(() => isHovering = false);
+  }
+
+  void _syncPinTop() {
+    final hWnd = _ensureHwnd();
+    if (hWnd == null) return;
+    win32.SetWindowPos(
+      hWnd,
+      textDisplayController.enablePinTop
+          ? win32.HWND_TOPMOST
+          : win32.HWND_NOTOPMOST,
+      0,
+      0,
+      0,
+      0,
+      win32.SWP_NOMOVE | win32.SWP_NOSIZE | win32.SWP_NOACTIVATE,
+    );
   }
 
   int? _ensureHwnd() {
@@ -67,8 +85,10 @@ class _DesktopLyricBodyState extends State<DesktopLyricBody> {
   }
 
   void _startMove() {
+    if (DesktopLyricController.instance.isLocked.value) return;
     final hWnd = _ensureHwnd();
     if (hWnd == null) return;
+    DesktopLyricController.instance.setWindowInteractionActive(true);
 
     final pt = ffi.calloc<win32.POINT>();
     win32.GetCursorPos(pt);
@@ -128,6 +148,7 @@ class _DesktopLyricBodyState extends State<DesktopLyricBody> {
   }
 
   void _updateMove() {
+    if (DesktopLyricController.instance.isLocked.value) return;
     final hWnd = _ensureHwnd();
     if (hWnd == null) return;
     if (_startCursorX == null ||
@@ -172,9 +193,7 @@ class _DesktopLyricBodyState extends State<DesktopLyricBody> {
       newTop,
       0,
       0,
-      win32.SWP_NOSIZE |
-          win32.SWP_NOZORDER |
-          win32.SWP_NOACTIVATE,
+      win32.SWP_NOSIZE | win32.SWP_NOZORDER | win32.SWP_NOACTIVATE,
     );
   }
 
@@ -183,74 +202,111 @@ class _DesktopLyricBodyState extends State<DesktopLyricBody> {
     _startCursorY = null;
     _startWindowLeft = null;
     _startWindowTop = null;
+    DesktopLyricController.instance.setWindowInteractionActive(false);
+  }
+
+  void _startResize(ResizeEdge edge) {
+    if (DesktopLyricController.instance.isLocked.value) return;
+    _isResizing = true;
+    DesktopLyricController.instance.setWindowInteractionActive(true);
+    windowManager.startResizing(edge);
+    _resizeReleaseTimer?.cancel();
+    _resizeReleaseTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
+      if (win32.GetAsyncKeyState(win32.VK_LBUTTON) & 0x8000 != 0) return;
+      _endResize();
+    });
+  }
+
+  void _endResize() {
+    if (!_isResizing) return;
+    _resizeReleaseTimer?.cancel();
+    _resizeReleaseTimer = null;
+    _isResizing = false;
+    DesktopLyricController.instance.setWindowInteractionActive(false);
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = context.watch<ThemeChangedMessage>();
 
-    return ValueListenableBuilder(
-      valueListenable: backgroundOpacity,
-      builder: (context, opacity, _) {
-        final baseOpacity = opacity;
-        final effectiveOpacity = isHovering
-            ? (baseOpacity < 0.04 ? 0.04 : baseOpacity)
-            : baseOpacity;
-        final background = Color(
-          theme.surfaceContainer,
-        ).withValues(alpha: effectiveOpacity);
-        return Scaffold(
-          backgroundColor: background,
-          body: DragToResizeArea(
-            enableResizeEdges: const [
-              ResizeEdge.left,
-              ResizeEdge.right,
-              ResizeEdge.top,
-              ResizeEdge.bottom,
-              ResizeEdge.topLeft,
-              ResizeEdge.topRight,
-              ResizeEdge.bottomLeft,
-              ResizeEdge.bottomRight,
-            ],
-            child: Stack(
-              children: [
-                GestureDetector(
-                  behavior: HitTestBehavior.translucent,
-                  onPanStart: (_) => _startMove(),
-                  onPanUpdate: (_) => _updateMove(),
-                  onPanEnd: (_) => _endMove(),
-                  onPanCancel: _endMove,
-                  child: MouseRegion(
-                    onEnter: (_) {
-                      setState(() {
-                        isHovering = true;
-                      });
-                    },
-                    onExit: (_) {
-                      setState(() {
-                        isHovering = false;
-                      });
-                    },
-                    child: SizedBox(
-                      width: double.infinity,
-                      height: double.infinity,
-                      child: DesktopLyricForeground(isHovering: isHovering),
-                    ),
+    return ValueListenableBuilder<bool>(
+      valueListenable: DesktopLyricController.instance.isLocked,
+      builder: (context, locked, _) => ValueListenableBuilder(
+        valueListenable: backgroundOpacity,
+        builder: (context, opacity, _) {
+          final baseOpacity = opacity;
+          final hovering = !locked && isHovering;
+          final effectiveOpacity = hovering
+              ? (baseOpacity < 0.04 ? 0.04 : baseOpacity)
+              : baseOpacity;
+          final background = Color(
+            theme.surfaceContainer,
+          ).withValues(alpha: effectiveOpacity);
+          return Scaffold(
+            backgroundColor: background,
+            body: DragToResizeArea(
+              enableResizeEdges: locked
+                  ? const []
+                  : const [
+                      ResizeEdge.left,
+                      ResizeEdge.right,
+                      ResizeEdge.top,
+                      ResizeEdge.bottom,
+                      ResizeEdge.topLeft,
+                      ResizeEdge.topRight,
+                      ResizeEdge.bottomLeft,
+                      ResizeEdge.bottomRight,
+                    ],
+              child: Stack(
+                children: [
+                  GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onPanStart: locked ? null : (_) => _startMove(),
+                    onPanUpdate: locked ? null : (_) => _updateMove(),
+                    onPanEnd: locked ? null : (_) => _endMove(),
+                    onPanCancel: locked ? null : _endMove,
+                    child: locked
+                        ? const SizedBox(
+                            width: double.infinity,
+                            height: double.infinity,
+                            child: DesktopLyricForeground(isHovering: false),
+                          )
+                        : MouseRegion(
+                            onEnter: (_) {
+                              setState(() {
+                                isHovering = true;
+                              });
+                            },
+                            onExit: (_) {
+                              setState(() {
+                                isHovering = false;
+                              });
+                            },
+                            child: SizedBox(
+                              width: double.infinity,
+                              height: double.infinity,
+                              child: DesktopLyricForeground(
+                                isHovering: isHovering,
+                              ),
+                            ),
+                          ),
                   ),
-                ),
-                _buildResizeHandle(ResizeEdge.left),
-                _buildResizeHandle(ResizeEdge.right),
-                _buildResizeHandle(ResizeEdge.top),
-                _buildResizeHandle(ResizeEdge.bottom),
-                _buildResizeHandle(ResizeEdge.topLeft),
-                _buildResizeHandle(ResizeEdge.topRight),
-                _buildResizeHandle(ResizeEdge.bottomLeft),
-                _buildResizeHandle(ResizeEdge.bottomRight),
-              ],
+                  if (!locked) ...[
+                    _buildResizeHandle(ResizeEdge.left),
+                    _buildResizeHandle(ResizeEdge.right),
+                    _buildResizeHandle(ResizeEdge.top),
+                    _buildResizeHandle(ResizeEdge.bottom),
+                    _buildResizeHandle(ResizeEdge.topLeft),
+                    _buildResizeHandle(ResizeEdge.topRight),
+                    _buildResizeHandle(ResizeEdge.bottomLeft),
+                    _buildResizeHandle(ResizeEdge.bottomRight),
+                  ],
+                ],
+              ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 
@@ -308,7 +364,7 @@ class _DesktopLyricBodyState extends State<DesktopLyricBody> {
         cursor: _getCursorForEdge(edge),
         child: GestureDetector(
           behavior: HitTestBehavior.translucent,
-          onPanStart: (_) => windowManager.startResizing(edge),
+          onPanStart: (_) => _startResize(edge),
           child: Container(color: Colors.transparent),
         ),
       ),

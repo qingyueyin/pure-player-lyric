@@ -35,16 +35,14 @@ void main(List<String> args) async {
     win32.free(windowName);
     if (foundHWnd != 0) {
       hWnd = foundHWnd;
-      final exStyle = win32.GetWindowLongPtr(
-        foundHWnd,
-        win32.GWL_EXSTYLE,
-      );
+      final exStyle = win32.GetWindowLongPtr(foundHWnd, win32.GWL_EXSTYLE);
       win32.SetWindowLongPtr(
         foundHWnd,
         win32.GWL_EXSTYLE,
-        (exStyle | win32.WS_EX_TOOLWINDOW) &
-            ~win32.WS_EX_APPWINDOW,
+        (exStyle | win32.WS_EX_TOOLWINDOW) & ~win32.WS_EX_APPWINDOW,
       );
+      DesktopLyricController.instance.syncWindowVisibility();
+      DesktopLyricController.instance.syncUnlockButtonStyle();
     }
   });
 

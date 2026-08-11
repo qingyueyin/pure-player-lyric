@@ -132,6 +132,7 @@ class TextDisplayController extends ChangeNotifier {
   bool showRoman = true;
   RomanPosition romanPosition = RomanPosition.between;
   bool showNowPlayingInfo = true;
+  bool hideOnPause = false;
   LyricTextAlign lyricTextAlign = LyricTextAlign.center;
   LyricSwitchAnimation lyricAnimation = LyricSwitchAnimation.slideUp;
   bool enableStroke = true;
@@ -159,6 +160,7 @@ class TextDisplayController extends ChangeNotifier {
       'showRoman': showRoman,
       'romanPosition': romanPosition.index,
       'showNowPlayingInfo': showNowPlayingInfo,
+      'hideOnPause': hideOnPause,
       'lyricTextAlign': lyricTextAlign.index,
       'lyricAnimation': lyricAnimation.index,
       'enableStroke': enableStroke,
@@ -191,6 +193,7 @@ class TextDisplayController extends ChangeNotifier {
       romanPosition =
           RomanPosition.values[(data['romanPosition'] as num?)?.toInt() ?? 1];
       showNowPlayingInfo = (data['showNowPlayingInfo'] as bool?) ?? true;
+      hideOnPause = (data['hideOnPause'] as bool?) ?? false;
       lyricTextAlign =
           LyricTextAlign.values[(data['lyricTextAlign'] as num?)?.toInt() ?? 1];
       final lyricAnimationIndex =
@@ -348,6 +351,10 @@ class TextDisplayController extends ChangeNotifier {
     }
     if (config['showNowPlayingInfo'] != null) {
       showNowPlayingInfo = config['showNowPlayingInfo'] as bool;
+      changed = true;
+    }
+    if (config['hideOnPause'] != null) {
+      hideOnPause = config['hideOnPause'] as bool;
       changed = true;
     }
     if (config['lyricTextAlign'] != null) {
