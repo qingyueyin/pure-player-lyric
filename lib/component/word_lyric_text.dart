@@ -69,18 +69,12 @@ class _WordLyricTextState extends State<WordLyricText>
   final Stopwatch _stopwatch = Stopwatch();
   final ValueNotifier<int> _progressMs = ValueNotifier(0);
 
-  List<_CharInfo> _chars = const [];
-  double _totalWidth = 0;
-  double _totalHeight = 0;
+  _WordLyricRenderCache? _renderCache;
   double _baseProgressMs = 0;
   double _playbackRate = 1.0;
 
   late VoidCallback _playingListener;
   late VoidCallback _progressListener;
-
-  /// 字符宽度缓存
-  static final Map<String, _CharMeasurement> _charWidthCache = {};
-  static const int _maxCacheSize = 200;
 
   @override
   void initState() {
@@ -90,7 +84,7 @@ class _WordLyricTextState extends State<WordLyricText>
     _progressListener = _applyProgressSnapshot;
     widget.isPlaying.addListener(_playingListener);
     widget.progress.addListener(_progressListener);
-    _resetFromLine(widget.line);
+    _resetFromLine();
     _syncPlaying();
   }
 
@@ -118,10 +112,13 @@ class _WordLyricTextState extends State<WordLyricText>
         oldWidget.fontSize != widget.fontSize ||
         oldWidget.fontWeight != widget.fontWeight ||
         oldWidget.color != widget.color ||
-        oldWidget.playedColor != widget.playedColor;
+        oldWidget.playedColor != widget.playedColor ||
+        oldWidget.alpha != widget.alpha ||
+        oldWidget.enableOutline != widget.enableOutline ||
+        oldWidget.outlineColor != widget.outlineColor;
 
     if (contentChanged) {
-      _resetFromLine(widget.line);
+      _resetFromLine();
       _syncPlaying();
     } else if (propsChanged) {
       _rebuildLayout();
@@ -143,71 +140,22 @@ class _WordLyricTextState extends State<WordLyricText>
     return true;
   }
 
-  /// 测量并构建字符布局。桌面歌词收到的 words.startMs 已是相对行开始的时间，
-  /// 直接使用，不再做绝对/相对时间猜测。
   void _buildLayout() {
     final words = widget.line.words ?? const [];
-    final fontSize = widget.fontSize;
-
-    final chars = <_CharInfo>[];
-    final measureTp = _TextPainterPool.obtain();
-    double x = 0;
-    double maxH = 0;
-
-    for (int wi = 0; wi < words.length; wi++) {
-      final w = words[wi];
-      final wordStartMs = w.startMs;
-      final wordLengthMs = w.lengthMs;
-
-      for (final rune in w.content.runes) {
-        final char = String.fromCharCode(rune);
-        final cacheKey = '$char|$fontSize|${widget.fontWeight}';
-        final cached = _charWidthCache[cacheKey];
-        final measurement = cached ?? _measureChar(measureTp, char, cacheKey);
-        final charWidth = measurement.width;
-
-        if (maxH < measurement.height) maxH = measurement.height;
-
-        chars.add(
-          _CharInfo(
-            char: char,
-            x: x,
-            width: charWidth,
-            wordIndex: wi,
-            wordStartMs: wordStartMs,
-            wordLengthMs: wordLengthMs,
-          ),
-        );
-
-        x += charWidth;
-      }
-      x += fontSize * 0.12;
-    }
-
-    _chars = chars;
-    _totalWidth = x;
-    _totalHeight = maxH;
-    _TextPainterPool.recycle(measureTp);
-  }
-
-  _CharMeasurement _measureChar(TextPainter tp, String char, String cacheKey) {
-    tp.text = TextSpan(
-      text: char,
-      style: TextStyle(
-        fontSize: widget.fontSize,
-        fontWeight: lyricFontWeightFromInt(widget.fontWeight),
-      ),
+    final previous = _renderCache;
+    _renderCache = _WordLyricRenderCache.create(
+      words: words,
+      fontSize: widget.fontSize,
+      fontWeight: lyricFontWeightFromInt(widget.fontWeight),
+      textColor: applyLyricOpacity(widget.color, widget.alpha),
+      playedColor: widget.playedColor.withValues(alpha: widget.alpha),
+      outlineColor: applyLyricOpacity(widget.outlineColor, widget.alpha),
+      enableOutline: widget.enableOutline,
     );
-    tp.layout();
-    final measurement = _CharMeasurement(tp.width, tp.height);
-    if (_charWidthCache.length >= _maxCacheSize) {
-      _charWidthCache.remove(_charWidthCache.keys.first);
-    }
-    _charWidthCache[cacheKey] = measurement;
-    return measurement;
+    previous?.dispose();
   }
 
-  void _resetFromLine(LyricLineChangedMessage line) {
+  void _resetFromLine() {
     _buildLayout();
     _applyProgressSnapshot();
   }
@@ -302,120 +250,174 @@ class _WordLyricTextState extends State<WordLyricText>
     widget.progress.removeListener(_progressListener);
     _ticker.dispose();
     _stopwatch.stop();
+    _renderCache?.dispose();
     _progressMs.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<int>(
-      valueListenable: _progressMs,
-      builder: (context, progress, _) {
-        if (_chars.isEmpty) {
-          return const SizedBox.shrink();
-        }
-
-        return SizedBox(
-          width: _totalWidth,
-          height: _totalHeight,
-          child: CustomPaint(
-            painter: _WordLyricPainter(
-              chars: _chars,
-              progressMs: progress,
-              textAlign: widget.textAlign,
-              textColor: widget.color,
-              playedColor: widget.playedColor,
-              alpha: widget.alpha,
-              enableOutline: widget.enableOutline,
-              outlineColor: widget.outlineColor,
-              fontSize: widget.fontSize,
-              fontWeight: lyricFontWeightFromInt(widget.fontWeight),
-              totalWidth: _totalWidth,
-            ),
-          ),
-        );
-      },
+    final cache = _renderCache;
+    if (cache == null || cache.segments.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return SizedBox(
+      width: cache.totalWidth,
+      height: cache.totalHeight,
+      child: CustomPaint(
+        painter: _WordLyricPainter(
+          cache: cache,
+          progress: _progressMs,
+          textAlign: widget.textAlign,
+        ),
+      ),
     );
   }
 }
 
-class _CharInfo {
-  final String char;
+class _WordSegment {
   final double x;
   final double width;
-  final int wordIndex;
   final int wordStartMs;
   final int wordLengthMs;
 
-  const _CharInfo({
-    required this.char,
+  const _WordSegment({
     required this.x,
     required this.width,
-    required this.wordIndex,
     required this.wordStartMs,
     required this.wordLengthMs,
   });
-
-  int get wordEndMs => wordStartMs + wordLengthMs;
 }
 
-class _CharMeasurement {
-  final double width;
-  final double height;
+class _WordLyricRenderCache {
+  _WordLyricRenderCache({
+    required this.segments,
+    required this.dimFillPainters,
+    required this.brightFillPainters,
+    required this.strokePainters,
+    required this.totalWidth,
+    required this.totalHeight,
+    required this.enableOutline,
+  });
 
-  const _CharMeasurement(this.width, this.height);
-}
+  final List<_WordSegment> segments;
+  final List<TextPainter> dimFillPainters;
+  final List<TextPainter> brightFillPainters;
+  final List<TextPainter> strokePainters;
+  final double totalWidth;
+  final double totalHeight;
+  final bool enableOutline;
 
-/// 轻量 TextPainter 对象池，避免 paint 时频繁创建/销毁。
-class _TextPainterPool {
-  static final List<TextPainter> _pool = [];
-  static const int _maxSize = 8;
-
-  static TextPainter obtain() {
-    if (_pool.isNotEmpty) {
-      final tp = _pool.removeLast();
-      tp.text = null;
-      return tp;
-    }
-    return TextPainter(textDirection: TextDirection.ltr);
+  static TextPainter _layoutWord(String content, TextStyle style) {
+    return TextPainter(
+      text: TextSpan(text: content, style: style),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout();
   }
 
-  static void recycle(TextPainter tp) {
-    if (_pool.length < _maxSize) {
-      tp.text = null;
-      _pool.add(tp);
-    } else {
-      tp.dispose();
+  static _WordLyricRenderCache create({
+    required List<LyricWord> words,
+    required double fontSize,
+    required FontWeight fontWeight,
+    required Color textColor,
+    required Color playedColor,
+    required Color outlineColor,
+    required bool enableOutline,
+  }) {
+    final dimFillStyle = TextStyle(
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+      color: textColor,
+    );
+    final brightFillStyle = TextStyle(
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+      color: playedColor,
+    );
+    final strokeStyle = TextStyle(
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+      foreground: Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = lyricOutlineWidth(fontSize)
+        ..color = outlineColor,
+    );
+    final segments = <_WordSegment>[];
+    final dimFillPainters = <TextPainter>[];
+    final brightFillPainters = <TextPainter>[];
+    final strokePainters = <TextPainter>[];
+    final gap = fontSize * 0.12;
+    var x = 0.0;
+    var maxHeight = 0.0;
+
+    for (final word in words) {
+      final dimPainter = _layoutWord(word.content, dimFillStyle);
+      final brightPainter = _layoutWord(word.content, brightFillStyle);
+      final strokePainter = enableOutline
+          ? _layoutWord(word.content, strokeStyle)
+          : null;
+      final width = dimPainter.width;
+      if (dimPainter.height > maxHeight) maxHeight = dimPainter.height;
+      segments.add(
+        _WordSegment(
+          x: x,
+          width: width,
+          wordStartMs: word.startMs,
+          wordLengthMs: word.lengthMs,
+        ),
+      );
+      dimFillPainters.add(dimPainter);
+      brightFillPainters.add(brightPainter);
+      if (strokePainter != null) strokePainters.add(strokePainter);
+      x += width + gap;
+    }
+
+    return _WordLyricRenderCache(
+      segments: segments,
+      dimFillPainters: dimFillPainters,
+      brightFillPainters: brightFillPainters,
+      strokePainters: strokePainters,
+      totalWidth: x,
+      totalHeight: maxHeight,
+      enableOutline: enableOutline,
+    );
+  }
+
+  void paintLayer(Canvas canvas, double startX, {required bool bright}) {
+    final fills = bright ? brightFillPainters : dimFillPainters;
+    for (var index = 0; index < segments.length; index++) {
+      final offset = Offset(startX + segments[index].x, 0);
+      if (enableOutline) strokePainters[index].paint(canvas, offset);
+      fills[index].paint(canvas, offset);
+    }
+  }
+
+  void dispose() {
+    for (final painter in dimFillPainters) {
+      painter.dispose();
+    }
+    for (final painter in brightFillPainters) {
+      painter.dispose();
+    }
+    for (final painter in strokePainters) {
+      painter.dispose();
     }
   }
 }
 
 class _WordLyricPainter extends CustomPainter {
-  final List<_CharInfo> chars;
-  final int progressMs;
+  final _WordLyricRenderCache cache;
+  final ValueListenable<int> progress;
   final TextAlign textAlign;
-  final Color textColor;
-  final Color playedColor;
-  final double alpha;
-  final bool enableOutline;
-  final Color outlineColor;
-  final double fontSize;
-  final FontWeight fontWeight;
-  final double totalWidth;
 
-  const _WordLyricPainter({
-    required this.chars,
-    required this.progressMs,
+  _WordLyricPainter({
+    required this.cache,
+    required this.progress,
     required this.textAlign,
-    required this.textColor,
-    required this.playedColor,
-    required this.alpha,
-    required this.enableOutline,
-    required this.outlineColor,
-    required this.fontSize,
-    required this.fontWeight,
-    required this.totalWidth,
-  });
+  }) : super(repaint: progress);
+
+  int get progressMs => progress.value;
 
   double _wordProgress(int startMs, int lengthMs) {
     if (progressMs < startMs) return 0.0;
@@ -427,125 +429,42 @@ class _WordLyricPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (chars.isEmpty) return;
+    final segments = cache.segments;
+    if (segments.isEmpty) return;
 
     final startX = switch (textAlign) {
       TextAlign.left || TextAlign.start => 0.0,
-      TextAlign.center => (size.width - totalWidth) / 2,
-      TextAlign.right || TextAlign.end => size.width - totalWidth,
+      TextAlign.center => (size.width - cache.totalWidth) / 2,
+      TextAlign.right || TextAlign.end => size.width - cache.totalWidth,
       _ => 0.0,
     };
 
-    // 计算扫光右边界：逐个字符累加，做到逐字高亮
     double sweepX = startX;
-    for (var i = 0; i < chars.length;) {
-      final c = chars[i];
-      final wp = _wordProgress(c.wordStartMs, c.wordLengthMs);
-      var wordEndIndex = i;
-      while (wordEndIndex + 1 < chars.length &&
-          chars[wordEndIndex + 1].wordIndex == c.wordIndex) {
-        wordEndIndex++;
-      }
-      final wordEnd = chars[wordEndIndex];
+    for (final segment in segments) {
+      final wp = _wordProgress(segment.wordStartMs, segment.wordLengthMs);
       if (wp >= 1.0) {
-        sweepX = startX + wordEnd.x + wordEnd.width;
-        i = wordEndIndex + 1;
+        sweepX = startX + segment.x + segment.width;
       } else if (wp > 0) {
-        final wordWidth = wordEnd.x + wordEnd.width - c.x;
-        sweepX = startX + c.x + wordWidth * wp;
+        sweepX = startX + segment.x + segment.width * wp;
         break;
       } else {
         break;
       }
     }
 
-    final dimColor = applyLyricOpacity(textColor, alpha);
-    final brightColor = playedColor.withValues(alpha: alpha);
-    final dimOutline = applyLyricOpacity(outlineColor, alpha);
-    final brightOutline = applyLyricOpacity(outlineColor, alpha);
-    final outlineW = lyricOutlineWidth(fontSize);
-
-    final dimFillStyle = TextStyle(
-      fontSize: fontSize,
-      fontWeight: fontWeight,
-      color: dimColor,
-    );
-    final dimStrokeStyle = TextStyle(
-      fontSize: fontSize,
-      fontWeight: fontWeight,
-      foreground: Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = outlineW
-        ..color = dimOutline,
-    );
-    final brightFillStyle = TextStyle(
-      fontSize: fontSize,
-      fontWeight: fontWeight,
-      color: brightColor,
-    );
-    final brightStrokeStyle = TextStyle(
-      fontSize: fontSize,
-      fontWeight: fontWeight,
-      foreground: Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = outlineW
-        ..color = brightOutline,
-    );
-
-    final tp = _TextPainterPool.obtain();
-
-    // Pass 1: 暗淡层
-    _paintLayer(canvas, tp, chars, startX, dimFillStyle, dimStrokeStyle);
-
-    // Pass 2: 已播放亮色层，clip 到扫光区域
+    cache.paintLayer(canvas, startX, bright: false);
     if (sweepX > startX) {
       canvas.save();
       canvas.clipRect(Rect.fromLTRB(startX, -1, sweepX + 1, size.height + 1));
-      _paintLayer(
-        canvas,
-        tp,
-        chars,
-        startX,
-        brightFillStyle,
-        brightStrokeStyle,
-      );
+      cache.paintLayer(canvas, startX, bright: true);
       canvas.restore();
-    }
-
-    _TextPainterPool.recycle(tp);
-  }
-
-  void _paintLayer(
-    Canvas canvas,
-    TextPainter tp,
-    List<_CharInfo> chars,
-    double startX,
-    TextStyle fillStyle,
-    TextStyle strokeStyle,
-  ) {
-    if (enableOutline) {
-      for (final c in chars) {
-        tp.text = TextSpan(text: c.char, style: strokeStyle);
-        tp.layout();
-        tp.paint(canvas, Offset(startX + c.x, 0));
-      }
-    }
-    for (final c in chars) {
-      tp.text = TextSpan(text: c.char, style: fillStyle);
-      tp.layout();
-      tp.paint(canvas, Offset(startX + c.x, 0));
     }
   }
 
   @override
   bool shouldRepaint(covariant _WordLyricPainter oldDelegate) {
-    return oldDelegate.progressMs != progressMs ||
-        oldDelegate.chars.length != chars.length ||
+    return !identical(oldDelegate.cache, cache) ||
         oldDelegate.textAlign != textAlign ||
-        oldDelegate.textColor != textColor ||
-        oldDelegate.playedColor != playedColor ||
-        oldDelegate.enableOutline != enableOutline ||
-        oldDelegate.outlineColor != outlineColor ||
-        oldDelegate.alpha != alpha;
+        oldDelegate.progress != progress;
   }
 }
