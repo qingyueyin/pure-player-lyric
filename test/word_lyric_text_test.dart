@@ -69,6 +69,60 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('lays word fragments out as one shaped line', (tester) async {
+    final isPlaying = ValueNotifier(false);
+    final progress = ValueNotifier(
+      LyricProgressChangedMessage(
+        0,
+        DateTime.now().millisecondsSinceEpoch,
+        1.0,
+        false,
+      ),
+    );
+    addTearDown(isPlaying.dispose);
+    addTearDown(progress.dispose);
+    const line =
+        LyricLineChangedMessage('我们就是最好的例子', Duration(seconds: 4), null, [
+          LyricWord(0, 800, '我们'),
+          LyricWord(800, 800, '就是'),
+          LyricWord(1600, 800, '最好'),
+          LyricWord(2400, 400, '的'),
+          LyricWord(2800, 1200, '例子'),
+        ]);
+    const fontSize = 24.0;
+    const fontWeight = FontWeight.w700;
+    final expectedPainter = TextPainter(
+      text: const TextSpan(
+        text: '我们就是最好的例子',
+        style: TextStyle(fontSize: fontSize, fontWeight: fontWeight),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout();
+    addTearDown(expectedPainter.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: WordLyricText(
+            line: line,
+            color: Colors.white,
+            playedColor: Colors.blue,
+            fontSize: fontSize,
+            fontWeight: 700,
+            textAlign: TextAlign.center,
+            isPlaying: isPlaying,
+            progress: progress,
+          ),
+        ),
+      ),
+    );
+
+    final size = tester.getSize(find.byType(WordLyricText));
+    expect(size.width, closeTo(expectedPainter.width, 0.01));
+    expect(size.height, closeTo(expectedPainter.height, 0.01));
+  });
+
   testWidgets('advances calibrated progress at the playback rate', (
     tester,
   ) async {

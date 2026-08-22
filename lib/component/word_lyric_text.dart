@@ -43,6 +43,7 @@ class WordLyricText extends StatefulWidget {
   final double alpha;
   final bool enableOutline;
   final Color outlineColor;
+  final bool vertical;
 
   const WordLyricText({
     super.key,
@@ -57,6 +58,7 @@ class WordLyricText extends StatefulWidget {
     this.alpha = 1.0,
     this.enableOutline = true,
     this.outlineColor = Colors.black,
+    this.vertical = false,
   });
 
   @override
@@ -115,7 +117,8 @@ class _WordLyricTextState extends State<WordLyricText>
         oldWidget.playedColor != widget.playedColor ||
         oldWidget.alpha != widget.alpha ||
         oldWidget.enableOutline != widget.enableOutline ||
-        oldWidget.outlineColor != widget.outlineColor;
+        oldWidget.outlineColor != widget.outlineColor ||
+        oldWidget.vertical != widget.vertical;
 
     if (contentChanged) {
       _resetFromLine();
@@ -151,6 +154,7 @@ class _WordLyricTextState extends State<WordLyricText>
       playedColor: widget.playedColor.withValues(alpha: widget.alpha),
       outlineColor: applyLyricOpacity(widget.outlineColor, widget.alpha),
       enableOutline: widget.enableOutline,
+      vertical: widget.vertical,
     );
     previous?.dispose();
   }
@@ -269,6 +273,7 @@ class _WordLyricTextState extends State<WordLyricText>
           cache: cache,
           progress: _progressMs,
           textAlign: widget.textAlign,
+          vertical: widget.vertical,
         ),
       ),
     );
@@ -277,38 +282,72 @@ class _WordLyricTextState extends State<WordLyricText>
 
 class _WordSegment {
   final double x;
+  final double y;
   final double width;
+  final double height;
   final int wordStartMs;
   final int wordLengthMs;
 
   const _WordSegment({
     required this.x,
+    required this.y,
     required this.width,
+    required this.height,
     required this.wordStartMs,
     required this.wordLengthMs,
   });
 }
 
+class _CharLayout {
+  final double width;
+  final double height;
+  final bool rotate;
+  final TextPainter dimFillPainter;
+  final TextPainter brightFillPainter;
+  final TextPainter? strokePainter;
+
+  const _CharLayout({
+    required this.width,
+    required this.height,
+    required this.rotate,
+    required this.dimFillPainter,
+    required this.brightFillPainter,
+    required this.strokePainter,
+  });
+
+  void dispose() {
+    dimFillPainter.dispose();
+    brightFillPainter.dispose();
+    strokePainter?.dispose();
+  }
+}
+
+final RegExp _alphanumericChar = RegExp(
+  r'''^[A-Za-z0-9 !"'?.,:;()\[\]\-《》「」（）：/“”]+$''',
+);
+
 class _WordLyricRenderCache {
   _WordLyricRenderCache({
     required this.segments,
-    required this.dimFillPainters,
-    required this.brightFillPainters,
-    required this.strokePainters,
+    required this.dimFillPainter,
+    required this.brightFillPainter,
+    required this.strokePainter,
     required this.totalWidth,
     required this.totalHeight,
-    required this.enableOutline,
+    this.vertical = false,
+    this.charLayouts = const [],
   });
 
   final List<_WordSegment> segments;
-  final List<TextPainter> dimFillPainters;
-  final List<TextPainter> brightFillPainters;
-  final List<TextPainter> strokePainters;
+  final TextPainter dimFillPainter;
+  final TextPainter brightFillPainter;
+  final TextPainter? strokePainter;
   final double totalWidth;
   final double totalHeight;
-  final bool enableOutline;
+  final bool vertical;
+  final List<_CharLayout> charLayouts;
 
-  static TextPainter _layoutWord(String content, TextStyle style) {
+  static TextPainter _layoutLine(String content, TextStyle style) {
     return TextPainter(
       text: TextSpan(text: content, style: style),
       textDirection: TextDirection.ltr,
@@ -324,6 +363,7 @@ class _WordLyricRenderCache {
     required Color playedColor,
     required Color outlineColor,
     required bool enableOutline,
+    required bool vertical,
   }) {
     final dimFillStyle = TextStyle(
       fontSize: fontSize,
@@ -343,65 +383,155 @@ class _WordLyricRenderCache {
         ..strokeWidth = lyricOutlineWidth(fontSize)
         ..color = outlineColor,
     );
-    final segments = <_WordSegment>[];
-    final dimFillPainters = <TextPainter>[];
-    final brightFillPainters = <TextPainter>[];
-    final strokePainters = <TextPainter>[];
-    final gap = fontSize * 0.12;
-    var x = 0.0;
-    var maxHeight = 0.0;
-
-    for (final word in words) {
-      final dimPainter = _layoutWord(word.content, dimFillStyle);
-      final brightPainter = _layoutWord(word.content, brightFillStyle);
+    if (!vertical) {
+      final buffer = StringBuffer();
+      final wordRanges = <({int start, int end, LyricWord word})>[];
+      for (final word in words) {
+        final start = buffer.length;
+        buffer.write(word.content);
+        wordRanges.add((start: start, end: buffer.length, word: word));
+      }
+      final content = buffer.toString();
+      final dimFillPainter = _layoutLine(content, dimFillStyle);
+      final brightFillPainter = _layoutLine(content, brightFillStyle);
       final strokePainter = enableOutline
-          ? _layoutWord(word.content, strokeStyle)
+          ? _layoutLine(content, strokeStyle)
           : null;
-      final width = dimPainter.width;
-      if (dimPainter.height > maxHeight) maxHeight = dimPainter.height;
+      final segments = <_WordSegment>[];
+      var previousEnd = 0.0;
+      for (final range in wordRanges) {
+        final boxes = dimFillPainter.getBoxesForSelection(
+          TextSelection(baseOffset: range.start, extentOffset: range.end),
+        );
+        var left = previousEnd;
+        var right = previousEnd;
+        if (boxes.isNotEmpty) {
+          left = boxes.first.left;
+          right = boxes.first.right;
+          for (final box in boxes.skip(1)) {
+            if (box.left < left) left = box.left;
+            if (box.right > right) right = box.right;
+          }
+        }
+        segments.add(
+          _WordSegment(
+            x: left,
+            y: 0,
+            width: right - left,
+            height: dimFillPainter.height,
+            wordStartMs: range.word.startMs,
+            wordLengthMs: range.word.lengthMs,
+          ),
+        );
+        previousEnd = right;
+      }
+
+      return _WordLyricRenderCache(
+        segments: segments,
+        dimFillPainter: dimFillPainter,
+        brightFillPainter: brightFillPainter,
+        strokePainter: strokePainter,
+        totalWidth: dimFillPainter.width,
+        totalHeight: dimFillPainter.height,
+      );
+    }
+
+    final charLayouts = <_CharLayout>[];
+    final segments = <_WordSegment>[];
+    var totalHeight = 0.0;
+    var totalWidth = 0.0;
+    for (final word in words) {
+      final wordStartY = totalHeight;
+      var wordHeight = 0.0;
+      var wordWidth = 0.0;
+      for (final char in word.content.split('')) {
+        final dimFillPainter = _layoutLine(char, dimFillStyle);
+        final brightFillPainter = _layoutLine(char, brightFillStyle);
+        final strokePainter = enableOutline
+            ? _layoutLine(char, strokeStyle)
+            : null;
+        final rotate = _alphanumericChar.hasMatch(char);
+        final charWidth = rotate
+            ? dimFillPainter.height
+            : dimFillPainter.width;
+        final charHeight = rotate
+            ? dimFillPainter.width
+            : dimFillPainter.height;
+        charLayouts.add(
+          _CharLayout(
+            width: charWidth,
+            height: charHeight,
+            rotate: rotate,
+            dimFillPainter: dimFillPainter,
+            brightFillPainter: brightFillPainter,
+            strokePainter: strokePainter,
+          ),
+        );
+        wordHeight += charHeight;
+        if (charWidth > wordWidth) wordWidth = charWidth;
+      }
       segments.add(
         _WordSegment(
-          x: x,
-          width: width,
+          x: 0,
+          y: wordStartY,
+          width: wordWidth,
+          height: wordHeight,
           wordStartMs: word.startMs,
           wordLengthMs: word.lengthMs,
         ),
       );
-      dimFillPainters.add(dimPainter);
-      brightFillPainters.add(brightPainter);
-      if (strokePainter != null) strokePainters.add(strokePainter);
-      x += width + gap;
+      totalHeight += wordHeight;
+      if (wordWidth > totalWidth) totalWidth = wordWidth;
     }
 
     return _WordLyricRenderCache(
       segments: segments,
-      dimFillPainters: dimFillPainters,
-      brightFillPainters: brightFillPainters,
-      strokePainters: strokePainters,
-      totalWidth: x,
-      totalHeight: maxHeight,
-      enableOutline: enableOutline,
+      dimFillPainter: _layoutLine('', dimFillStyle),
+      brightFillPainter: _layoutLine('', brightFillStyle),
+      strokePainter: null,
+      totalWidth: totalWidth,
+      totalHeight: totalHeight,
+      vertical: true,
+      charLayouts: charLayouts,
     );
   }
 
   void paintLayer(Canvas canvas, double startX, {required bool bright}) {
-    final fills = bright ? brightFillPainters : dimFillPainters;
-    for (var index = 0; index < segments.length; index++) {
-      final offset = Offset(startX + segments[index].x, 0);
-      if (enableOutline) strokePainters[index].paint(canvas, offset);
-      fills[index].paint(canvas, offset);
+    if (!vertical) {
+      final offset = Offset(startX, 0);
+      strokePainter?.paint(canvas, offset);
+      (bright ? brightFillPainter : dimFillPainter).paint(canvas, offset);
+      return;
+    }
+    var y = 0.0;
+    for (final char in charLayouts) {
+      final x = startX + (totalWidth - char.width) / 2;
+      canvas.save();
+      if (char.rotate) {
+        canvas.translate(x + char.width, y);
+        canvas.rotate(3.141592653589793 / 2);
+      } else {
+        canvas.translate(x, y);
+      }
+      char.strokePainter?.paint(canvas, Offset.zero);
+      (bright ? char.brightFillPainter : char.dimFillPainter).paint(
+        canvas,
+        Offset.zero,
+      );
+      canvas.restore();
+      y += char.height;
     }
   }
 
   void dispose() {
-    for (final painter in dimFillPainters) {
-      painter.dispose();
+    if (!vertical) {
+      dimFillPainter.dispose();
+      brightFillPainter.dispose();
+      strokePainter?.dispose();
+      return;
     }
-    for (final painter in brightFillPainters) {
-      painter.dispose();
-    }
-    for (final painter in strokePainters) {
-      painter.dispose();
+    for (final char in charLayouts) {
+      char.dispose();
     }
   }
 }
@@ -410,11 +540,13 @@ class _WordLyricPainter extends CustomPainter {
   final _WordLyricRenderCache cache;
   final ValueListenable<int> progress;
   final TextAlign textAlign;
+  final bool vertical;
 
   _WordLyricPainter({
     required this.cache,
     required this.progress,
     required this.textAlign,
+    required this.vertical,
   }) : super(repaint: progress);
 
   int get progressMs => progress.value;
@@ -452,6 +584,37 @@ class _WordLyricPainter extends CustomPainter {
       }
     }
 
+    if (vertical) {
+      final startY = switch (textAlign) {
+        TextAlign.left || TextAlign.start => 0.0,
+        TextAlign.center => (size.height - cache.totalHeight) / 2,
+        TextAlign.right || TextAlign.end => size.height - cache.totalHeight,
+        _ => 0.0,
+      };
+      final centerX = (size.width - cache.totalWidth) / 2;
+      double sweepY = startY;
+      for (final segment in segments) {
+        final wp = _wordProgress(segment.wordStartMs, segment.wordLengthMs);
+        if (wp >= 1.0) {
+          sweepY = startY + segment.y + segment.height;
+        } else if (wp > 0) {
+          sweepY = startY + segment.y + segment.height * wp;
+          break;
+        } else {
+          break;
+        }
+      }
+
+      cache.paintLayer(canvas, centerX, bright: false);
+      if (sweepY > startY) {
+        canvas.save();
+        canvas.clipRect(Rect.fromLTRB(-1, startY - 1, size.width + 1, sweepY + 1));
+        cache.paintLayer(canvas, centerX, bright: true);
+        canvas.restore();
+      }
+      return;
+    }
+
     cache.paintLayer(canvas, startX, bright: false);
     if (sweepX > startX) {
       canvas.save();
@@ -465,6 +628,7 @@ class _WordLyricPainter extends CustomPainter {
   bool shouldRepaint(covariant _WordLyricPainter oldDelegate) {
     return !identical(oldDelegate.cache, cache) ||
         oldDelegate.textAlign != textAlign ||
+        oldDelegate.vertical != vertical ||
         oldDelegate.progress != progress;
   }
 }

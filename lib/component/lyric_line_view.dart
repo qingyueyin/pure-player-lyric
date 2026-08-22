@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:pure_player_lyric/component/foreground.dart';
 import 'package:pure_player_lyric/component/lyric_line_display_area.dart';
 import 'package:pure_player_lyric/desktop_lyric_controller.dart';
+import 'package:pure_player_lyric/message.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -14,10 +15,11 @@ class LyricLineView extends StatefulWidget {
 }
 
 class _LyricLineViewState extends State<LyricLineView> {
-  /// 鍋滅暀 300ms 鍚庡紑濮嬫粴鍔紝鎻愬墠 300ms 婊氬姩鍒板簳
+  /// 停留 300ms 后开始滚动，提前 300ms 滚动到底
   final waitFor = const Duration(milliseconds: 300);
-  final scrollController = ScrollController();
+  final slotScrollControllers = List.generate(2, (_) => ScrollController());
   int _scrollToken = 0;
+  int _lineVersion = 0;
   late VoidCallback _lyricLineListener;
 
   @override
@@ -27,12 +29,17 @@ class _LyricLineViewState extends State<LyricLineView> {
     _lyricLineListener = () {
       final line = DesktopLyricController.instance.lyricLine.value;
       _scrollToken += 1;
+      _lineVersion += 1;
       final token = _scrollToken;
 
-      /// 鍑忓幓鍚姩寤舵椂鍜屾粴鍔ㄧ粨鏉熷仠鐣欐椂闂?
+      /// 减去启动延时和滚动结束停留时间
       final Duration lastTime = line.length - waitFor - waitFor;
 
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        final currentSlot = textDisplayController.showDoubleLine
+            ? _lineVersion % 2
+            : 0;
+        final scrollController = slotScrollControllers[currentSlot];
         if (!scrollController.hasClients) return;
 
         scrollController.animateTo(
@@ -48,7 +55,9 @@ class _LyricLineViewState extends State<LyricLineView> {
             if (token != _scrollToken) return;
 
             final scrollDuration = Duration(
-              milliseconds: (lastTime.inMilliseconds * 0.8).clamp(200, 800).toInt(),
+              milliseconds: (lastTime.inMilliseconds * 0.8)
+                  .clamp(200, 800)
+                  .toInt(),
             );
             scrollController.animateTo(
               scrollController.position.maxScrollExtent,
@@ -66,25 +75,135 @@ class _LyricLineViewState extends State<LyricLineView> {
   @override
   Widget build(BuildContext context) {
     final textDisplayController = context.watch<TextDisplayController>();
-    final alignment = switch (textDisplayController.lyricTextAlign) {
-      LyricTextAlign.left => Alignment.centerLeft,
-      LyricTextAlign.center => Alignment.center,
-      LyricTextAlign.right => Alignment.centerRight,
-    };
+    final vertical = textDisplayController.useVerticalDisplayMode;
+    final showDoubleLine = textDisplayController.showDoubleLine;
+
+    return ValueListenableBuilder(
+      valueListenable: DesktopLyricController.instance.lyricLine,
+      builder: (context, lyricLine, _) {
+        final nextLine = lyricLine.nextContent == null
+            ? null
+            : LyricLineChangedMessage(
+                lyricLine.nextContent!,
+                Duration.zero,
+                lyricLine.nextTranslation,
+                null,
+                null,
+                null,
+                null,
+                null,
+                lyricLine.nextRomanLyric,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+              );
+
+        Widget slot(
+          LyricLineChangedMessage? line,
+          bool isNext,
+          int slotIndex,
+        ) => _buildSlot(
+          context: context,
+          textDisplayController: textDisplayController,
+          vertical: vertical,
+          showDoubleLine: showDoubleLine,
+          line: line,
+          isNext: isNext,
+          slotIndex: slotIndex,
+          alignmentOverride:
+              textDisplayController.lyricTextAlign == LyricTextAlign.separated
+              ? (slotIndex == 0 ? LyricTextAlign.left : LyricTextAlign.right)
+              : null,
+        );
+
+        if (!showDoubleLine) {
+          return slot(lyricLine, false, 0);
+        }
+
+        final currentSlotIndex = _lineVersion % 2;
+        final first = currentSlotIndex == 0
+            ? slot(lyricLine, false, 0)
+            : nextLine == null
+            ? const SizedBox.shrink()
+            : slot(nextLine, true, 0);
+        final second = currentSlotIndex == 1
+            ? slot(lyricLine, false, 1)
+            : nextLine == null
+            ? const SizedBox.shrink()
+            : slot(nextLine, true, 1);
+        return vertical
+            ? Row(
+                children: [
+                  Expanded(child: first),
+                  Expanded(child: second),
+                ],
+              )
+            : Column(
+                children: [
+                  Expanded(child: first),
+                  Expanded(child: second),
+                ],
+              );
+      },
+    );
+  }
+
+  Widget _buildSlot({
+    required BuildContext context,
+    required TextDisplayController textDisplayController,
+    required bool vertical,
+    required bool showDoubleLine,
+    required LyricLineChangedMessage? line,
+    required bool isNext,
+    required int slotIndex,
+    LyricTextAlign? alignmentOverride,
+  }) {
+    final effectiveAlignment =
+        alignmentOverride ?? textDisplayController.lyricTextAlign;
+    final alignment = vertical
+        ? switch (effectiveAlignment) {
+            LyricTextAlign.left => Alignment.topCenter,
+            LyricTextAlign.center => Alignment.center,
+            LyricTextAlign.right => Alignment.bottomCenter,
+            LyricTextAlign.separated => Alignment.topCenter,
+          }
+        : switch (effectiveAlignment) {
+            LyricTextAlign.left => Alignment.centerLeft,
+            LyricTextAlign.center => Alignment.center,
+            LyricTextAlign.right => Alignment.centerRight,
+            LyricTextAlign.separated => Alignment.centerLeft,
+          };
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      padding: EdgeInsets.symmetric(
+        horizontal: 16.0,
+        vertical: vertical ? 8.0 : 0.0,
+      ),
       child: LayoutBuilder(
         builder: (context, constraints) {
           return SingleChildScrollView(
             physics: const NeverScrollableScrollPhysics(),
-            controller: scrollController,
-            scrollDirection: Axis.horizontal,
+            controller: slotScrollControllers[slotIndex],
+            scrollDirection: vertical ? Axis.vertical : Axis.horizontal,
             child: ConstrainedBox(
-              constraints: BoxConstraints(minWidth: constraints.maxWidth),
+              constraints: vertical
+                  ? BoxConstraints(minHeight: constraints.maxHeight)
+                  : BoxConstraints(minWidth: constraints.maxWidth),
               child: Align(
                 alignment: alignment,
-                child: const LyricLineDisplayArea(),
+                child: LyricLineDisplayArea(
+                  line: line,
+                  isNext: isNext,
+                  alignment: effectiveAlignment,
+                  slotExtent: showDoubleLine
+                      ? (vertical
+                            ? constraints.maxWidth
+                            : constraints.maxHeight)
+                      : null,
+                ),
               ),
             ),
           );
@@ -95,8 +214,12 @@ class _LyricLineViewState extends State<LyricLineView> {
 
   @override
   void dispose() {
-    DesktopLyricController.instance.lyricLine.removeListener(_lyricLineListener);
-    scrollController.dispose();
+    DesktopLyricController.instance.lyricLine.removeListener(
+      _lyricLineListener,
+    );
+    for (final controller in slotScrollControllers) {
+      controller.dispose();
+    }
     super.dispose();
   }
 }

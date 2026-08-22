@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:pure_player_lyric/component/foreground.dart';
 import 'package:pure_player_lyric/component/lyric_line_display_area.dart';
+import 'package:pure_player_lyric/component/lyric_line_view.dart';
+import 'package:pure_player_lyric/component/lyric_text_display.dart';
 import 'package:pure_player_lyric/component/lyric_transition_dots.dart';
 import 'package:pure_player_lyric/component/word_lyric_text.dart';
 import 'package:pure_player_lyric/desktop_lyric_controller.dart';
@@ -14,6 +16,18 @@ void main() {
     child: ValueListenableProvider.value(
       value: DesktopLyricController.instance.theme,
       child: const MaterialApp(home: Scaffold(body: LyricLineDisplayArea())),
+    ),
+  );
+
+  Widget buildLineViewSubject() => ChangeNotifierProvider.value(
+    value: textDisplayController,
+    child: ValueListenableProvider.value(
+      value: DesktopLyricController.instance.theme,
+      child: const MaterialApp(
+        home: Scaffold(
+          body: SizedBox(width: 800, height: 180, child: LyricLineView()),
+        ),
+      ),
     ),
   );
 
@@ -30,6 +44,173 @@ void main() {
     await tester.pump();
 
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('allows translation placement on either side of the lyric', (
+    tester,
+  ) async {
+    final previousVertical = textDisplayController.useVerticalDisplayMode;
+    final previousRoman = textDisplayController.showRoman;
+    final previousTranslation = textDisplayController.showLyricTranslation;
+    final previousPosition = textDisplayController.translationPosition;
+    addTearDown(() {
+      textDisplayController.useVerticalDisplayMode = previousVertical;
+      textDisplayController.showRoman = previousRoman;
+      textDisplayController.showLyricTranslation = previousTranslation;
+      textDisplayController.translationPosition = previousPosition;
+    });
+    textDisplayController.useVerticalDisplayMode = true;
+    textDisplayController.showRoman = false;
+    textDisplayController.showLyricTranslation = true;
+    textDisplayController.translationPosition = TranslationPosition.beforeText;
+    DesktopLyricController.instance.lyricLine.value =
+        const LyricLineChangedMessage('原文', Duration(seconds: 3), '翻译');
+
+    await tester.pumpWidget(buildSubject());
+    expect(
+      tester
+          .widgetList<LyricTextDisplay>(find.byType(LyricTextDisplay))
+          .map((widget) => widget.text),
+      ['翻译', '原文'],
+    );
+
+    textDisplayController.applyConfig({'translationPosition': 1});
+    await tester.pump();
+    expect(
+      tester
+          .widgetList<LyricTextDisplay>(find.byType(LyricTextDisplay))
+          .map((widget) => widget.text),
+      ['原文', '翻译'],
+    );
+  });
+
+  testWidgets('keeps alternating double-line slots in place', (tester) async {
+    final previousDoubleLine = textDisplayController.showDoubleLine;
+    final previousAlignment = textDisplayController.lyricTextAlign;
+    final previousRoman = textDisplayController.showRoman;
+    final previousTranslation = textDisplayController.showLyricTranslation;
+    addTearDown(() {
+      textDisplayController.showDoubleLine = previousDoubleLine;
+      textDisplayController.lyricTextAlign = previousAlignment;
+      textDisplayController.showRoman = previousRoman;
+      textDisplayController.showLyricTranslation = previousTranslation;
+    });
+    textDisplayController.showDoubleLine = true;
+    textDisplayController.lyricTextAlign = LyricTextAlign.separated;
+    textDisplayController.showRoman = false;
+    textDisplayController.showLyricTranslation = false;
+    DesktopLyricController.instance.lyricLine.value =
+        LyricLineChangedMessage.fromJson({
+          'content': '第一行',
+          'length': const Duration(seconds: 3).inMicroseconds,
+          'nextContent': '第二行',
+        });
+
+    await tester.pumpWidget(buildLineViewSubject());
+    await tester.pump(const Duration(milliseconds: 701));
+    final firstTop = tester.getTopLeft(
+      find.byWidgetPredicate(
+        (widget) => widget is LyricTextDisplay && widget.text == '第一行',
+      ),
+    );
+    final secondTop = tester.getTopLeft(
+      find.byWidgetPredicate(
+        (widget) => widget is LyricTextDisplay && widget.text == '第二行',
+      ),
+    );
+    expect(firstTop.dy, lessThan(secondTop.dy));
+
+    DesktopLyricController.instance.lyricLine.value =
+        LyricLineChangedMessage.fromJson({
+          'content': '第二行',
+          'length': const Duration(seconds: 3).inMicroseconds,
+          'nextContent': '第三行',
+        });
+    await tester.pump(const Duration(milliseconds: 701));
+    await tester.pump(const Duration(milliseconds: 701));
+    final currentTop = tester.getTopLeft(
+      find.byWidgetPredicate(
+        (widget) => widget is LyricTextDisplay && widget.text == '第二行',
+      ),
+    );
+    final nextTop = tester.getTopLeft(
+      find.byWidgetPredicate(
+        (widget) => widget is LyricTextDisplay && widget.text == '第三行',
+      ),
+    );
+    expect(currentTop.dy, greaterThan(nextTop.dy));
+  });
+
+  testWidgets('slide transition does not hard-clip moving lyrics', (
+    tester,
+  ) async {
+    final previousAnimation = textDisplayController.lyricAnimation;
+    addTearDown(() {
+      textDisplayController.lyricAnimation = previousAnimation;
+    });
+    textDisplayController.lyricAnimation = LyricSwitchAnimation.slideUp;
+    DesktopLyricController.instance.lyricLine.value =
+        const LyricLineChangedMessage('上一句', Duration(seconds: 3));
+    await tester.pumpWidget(buildSubject());
+
+    DesktopLyricController.instance.lyricLine.value =
+        const LyricLineChangedMessage('下一句', Duration(seconds: 3));
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(
+      find.descendant(
+        of: find.byType(LyricLineDisplayArea),
+        matching: find.byType(ClipRect),
+      ),
+      findsNothing,
+    );
+  });
+
+  testWidgets('double-line slide travels a slot height', (tester) async {
+    final previousDoubleLine = textDisplayController.showDoubleLine;
+    final previousAnimation = textDisplayController.lyricAnimation;
+    final previousRoman = textDisplayController.showRoman;
+    final previousTranslation = textDisplayController.showLyricTranslation;
+    addTearDown(() {
+      textDisplayController.showDoubleLine = previousDoubleLine;
+      textDisplayController.lyricAnimation = previousAnimation;
+      textDisplayController.showRoman = previousRoman;
+      textDisplayController.showLyricTranslation = previousTranslation;
+    });
+    textDisplayController.showDoubleLine = true;
+    textDisplayController.lyricAnimation = LyricSwitchAnimation.slideUp;
+    textDisplayController.showRoman = false;
+    textDisplayController.showLyricTranslation = false;
+    DesktopLyricController.instance.lyricLine.value =
+        LyricLineChangedMessage.fromJson({
+          'content': '第一行',
+          'length': const Duration(seconds: 3).inMicroseconds,
+          'nextContent': '第二行',
+        });
+
+    await tester.pumpWidget(buildLineViewSubject());
+    await tester.pump(const Duration(milliseconds: 701));
+    final departingBaseline = tester.getTopLeft(
+      find.byWidgetPredicate(
+        (widget) => widget is LyricTextDisplay && widget.text == '第一行',
+      ),
+    );
+
+    DesktopLyricController.instance.lyricLine.value =
+        LyricLineChangedMessage.fromJson({
+          'content': '第二行',
+          'length': const Duration(seconds: 3).inMicroseconds,
+          'nextContent': '第三行',
+        });
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump(const Duration(milliseconds: 600));
+
+    final departingTop = tester.getTopLeft(
+      find.byWidgetPredicate(
+        (widget) => widget is LyricTextDisplay && widget.text == '第一行',
+      ),
+    );
+    expect(departingBaseline.dy - departingTop.dy, greaterThan(40));
   });
 
   testWidgets(

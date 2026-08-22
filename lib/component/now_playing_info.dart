@@ -28,11 +28,13 @@ class NowPlayingInfo extends StatelessWidget {
       LyricTextAlign.left => TextAlign.left,
       LyricTextAlign.center => TextAlign.center,
       LyricTextAlign.right => TextAlign.right,
+      LyricTextAlign.separated => TextAlign.center,
     };
     final crossAxisAlignment = switch (textDisplayController.lyricTextAlign) {
       LyricTextAlign.left => CrossAxisAlignment.start,
       LyricTextAlign.center => CrossAxisAlignment.center,
       LyricTextAlign.right => CrossAxisAlignment.end,
+      LyricTextAlign.separated => CrossAxisAlignment.center,
     };
 
     return ValueListenableBuilder(

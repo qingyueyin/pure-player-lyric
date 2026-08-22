@@ -20,6 +20,7 @@ class ActionRow extends StatelessWidget {
       LyricTextAlign.left => MainAxisAlignment.start,
       LyricTextAlign.center => MainAxisAlignment.center,
       LyricTextAlign.right => MainAxisAlignment.end,
+      LyricTextAlign.separated => MainAxisAlignment.center,
     };
 
     return Row(
