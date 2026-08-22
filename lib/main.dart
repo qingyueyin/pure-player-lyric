@@ -15,15 +15,17 @@ void main(List<String> args) async {
   DesktopLyricController.initWithArgs(args);
   textDisplayController.load();
 
-  WindowOptions windowOptions = const WindowOptions(
-    size: Size(800, 180),
+  WindowOptions windowOptions = WindowOptions(
+    size: textDisplayController.useVerticalDisplayMode
+        ? const Size(220, 900)
+        : const Size(800, 180),
     center: true,
     backgroundColor: Colors.transparent,
     skipTaskbar: true,
     titleBarStyle: TitleBarStyle.hidden,
     alwaysOnTop: true,
-    minimumSize: Size(400, 120),
-    maximumSize: Size(2400, 600),
+    minimumSize: Size(120, 120),
+    maximumSize: Size(2400, 2400),
   );
   windowManager.waitUntilReadyToShow(windowOptions, () async {
     await windowManager.setAsFrameless();

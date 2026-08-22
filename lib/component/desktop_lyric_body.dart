@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:ffi';
+import 'dart:ffi' hide Size;
 
 import 'package:pure_player_lyric/component/foreground.dart';
 import 'package:pure_player_lyric/desktop_lyric_controller.dart';
@@ -27,6 +27,7 @@ class _DesktopLyricBodyState extends State<DesktopLyricBody> {
   bool isHovering = false;
   bool _isResizing = false;
   Timer? _resizeReleaseTimer;
+  Timer? _pinTimer;
   int? _hWnd;
   int? _startCursorX;
   int? _startCursorY;
@@ -38,14 +39,31 @@ class _DesktopLyricBodyState extends State<DesktopLyricBody> {
     super.initState();
     DesktopLyricController.instance.isLocked.addListener(_handleLockChanged);
     textDisplayController.addListener(_syncPinTop);
+    textDisplayController.addListener(_syncWindowSizeForMode);
     WidgetsBinding.instance.addPostFrameCallback((_) => _syncPinTop());
+    _pinTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!textDisplayController.enablePinTop) return;
+      final hWnd = _ensureHwnd();
+      if (hWnd == null) return;
+      win32.SetWindowPos(
+        hWnd,
+        win32.HWND_TOPMOST,
+        0,
+        0,
+        0,
+        0,
+        win32.SWP_NOMOVE | win32.SWP_NOSIZE | win32.SWP_NOACTIVATE,
+      );
+    });
   }
 
   @override
   void dispose() {
     _resizeReleaseTimer?.cancel();
+    _pinTimer?.cancel();
     DesktopLyricController.instance.isLocked.removeListener(_handleLockChanged);
     textDisplayController.removeListener(_syncPinTop);
+    textDisplayController.removeListener(_syncWindowSizeForMode);
     if (_isResizing) {
       DesktopLyricController.instance.setWindowInteractionActive(false);
     }
@@ -70,6 +88,18 @@ class _DesktopLyricBodyState extends State<DesktopLyricBody> {
       0,
       0,
       win32.SWP_NOMOVE | win32.SWP_NOSIZE | win32.SWP_NOACTIVATE,
+    );
+  }
+
+  bool? _lastVerticalMode;
+
+  /// 竖排/横排切换时自动调整窗口尺寸，让竖排歌词有足够高度
+  void _syncWindowSizeForMode() {
+    final vertical = textDisplayController.useVerticalDisplayMode;
+    if (_lastVerticalMode == vertical) return;
+    _lastVerticalMode = vertical;
+    windowManager.setSize(
+      vertical ? const Size(220, 900) : const Size(800, 180),
     );
   }
 
