@@ -10,7 +10,7 @@ packages:
     source: hosted
     version: "93.0.0"
   analyzer:
-    dependency: "direct dev"
+    dependency: transitive
     description:
       name: analyzer
       sha256: de7148ed2fcec579b19f122c1800933dfa028f6d9fd38a152b04b1516cec120b
@@ -662,5 +662,5 @@ packages:
     source: hosted
     version: "3.1.2"
 sdks:
-  dart: ">=3.10.0-0 <4.0.0"
-  flutter: ">=3.18.0-18.0.pre.54"
+  dart: ">=3.10.0 <4.0.0"
+  flutter: ">=3.38.0"

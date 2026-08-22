@@ -10,7 +10,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/Platform-Windows-blue?style=flat-square" alt="Platform">
-  <img src="https://img.shields.io/badge/Flutter-3.3+-0x0175C2?style=flat-square" alt="Flutter">
+  <img src="https://img.shields.io/badge/Flutter-3.38+-0x0175C2?style=flat-square" alt="Flutter">
   <img src="https://img.shields.io/badge/License-GPL--3.0-green?style=flat-square" alt="License">
 </p>
 
@@ -85,7 +85,7 @@ flutter build windows --release
 <details>
 <summary>开源库</summary>
 
-window_manager、screen_retriever、provider、win32、ffi、flutter_localizations
+window_manager、provider、win32、ffi、json_annotation、flutter_localizations
 
 </details>
 
