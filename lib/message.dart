@@ -279,6 +279,7 @@ class DesktopLyricConfigMessage extends Message {
   final bool? showLyricTranslation;
   final bool? showRoman;
   final int? romanPosition;
+  final int? translationPosition;
   final bool? showNowPlayingInfo;
   final bool? hideOnPause;
   final int? lyricTextAlign;
@@ -289,6 +290,8 @@ class DesktopLyricConfigMessage extends Message {
   final int? unplayedColor;
   final bool? followThemeColor;
   final bool? useLightOutline;
+  final bool? useVerticalDisplayMode;
+  final bool? showDoubleLine;
 
   const DesktopLyricConfigMessage({
     this.lyricFontSize,
@@ -297,6 +300,7 @@ class DesktopLyricConfigMessage extends Message {
     this.showLyricTranslation,
     this.showRoman,
     this.romanPosition,
+    this.translationPosition,
     this.showNowPlayingInfo,
     this.hideOnPause,
     this.lyricTextAlign,
@@ -307,6 +311,8 @@ class DesktopLyricConfigMessage extends Message {
     this.unplayedColor,
     this.followThemeColor,
     this.useLightOutline,
+    this.useVerticalDisplayMode,
+    this.showDoubleLine,
   });
 
   factory DesktopLyricConfigMessage.fromJson(Map<String, dynamic> json) =>
@@ -317,6 +323,7 @@ class DesktopLyricConfigMessage extends Message {
         showLyricTranslation: json['showLyricTranslation'] as bool?,
         showRoman: json['showRoman'] as bool?,
         romanPosition: (json['romanPosition'] as num?)?.toInt(),
+        translationPosition: (json['translationPosition'] as num?)?.toInt(),
         showNowPlayingInfo: json['showNowPlayingInfo'] as bool?,
         hideOnPause: json['hideOnPause'] as bool?,
         lyricTextAlign: (json['lyricTextAlign'] as num?)?.toInt(),
@@ -327,6 +334,8 @@ class DesktopLyricConfigMessage extends Message {
         unplayedColor: (json['unplayedColor'] as num?)?.toInt(),
         followThemeColor: json['followThemeColor'] as bool?,
         useLightOutline: json['useLightOutline'] as bool?,
+        useVerticalDisplayMode: json['useVerticalDisplayMode'] as bool?,
+        showDoubleLine: json['showDoubleLine'] as bool?,
       );
 
   Map<String, dynamic> toJson() => _toJson();
@@ -340,6 +349,7 @@ class DesktopLyricConfigMessage extends Message {
       'showLyricTranslation': showLyricTranslation,
     if (showRoman != null) 'showRoman': showRoman,
     if (romanPosition != null) 'romanPosition': romanPosition,
+    if (translationPosition != null) 'translationPosition': translationPosition,
     if (showNowPlayingInfo != null) 'showNowPlayingInfo': showNowPlayingInfo,
     if (hideOnPause != null) 'hideOnPause': hideOnPause,
     if (lyricTextAlign != null) 'lyricTextAlign': lyricTextAlign,
@@ -350,5 +360,8 @@ class DesktopLyricConfigMessage extends Message {
     if (unplayedColor != null) 'unplayedColor': unplayedColor,
     if (followThemeColor != null) 'followThemeColor': followThemeColor,
     if (useLightOutline != null) 'useLightOutline': useLightOutline,
+    if (useVerticalDisplayMode != null)
+      'useVerticalDisplayMode': useVerticalDisplayMode,
+    if (showDoubleLine != null) 'showDoubleLine': showDoubleLine,
   };
 }

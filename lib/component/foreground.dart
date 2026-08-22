@@ -111,7 +111,7 @@ FontWeight lyricFontWeightFromInt(int weight) {
   };
 }
 
-enum LyricTextAlign { left, center, right }
+enum LyricTextAlign { left, center, right, separated }
 
 enum LyricSwitchAnimation {
   slideUp,
@@ -124,6 +124,8 @@ enum LyricSwitchAnimation {
 
 enum RomanPosition { aboveText, between, belowTranslation }
 
+enum TranslationPosition { beforeText, afterText }
+
 class TextDisplayController extends ChangeNotifier {
   double lyricFontSize = 22.0;
   double translationFontSize = 18.0;
@@ -131,6 +133,7 @@ class TextDisplayController extends ChangeNotifier {
   bool showLyricTranslation = true;
   bool showRoman = true;
   RomanPosition romanPosition = RomanPosition.between;
+  TranslationPosition translationPosition = TranslationPosition.afterText;
   bool showNowPlayingInfo = true;
   bool hideOnPause = false;
   LyricTextAlign lyricTextAlign = LyricTextAlign.center;
@@ -138,6 +141,8 @@ class TextDisplayController extends ChangeNotifier {
   bool enableStroke = true;
   bool enablePinTop = true;
   bool useLightOutline = false;
+  bool useVerticalDisplayMode = false;
+  bool showDoubleLine = false;
 
   static String get _settingsPath {
     final appData = Platform.environment['APPDATA'] ?? '.';
@@ -159,6 +164,7 @@ class TextDisplayController extends ChangeNotifier {
       'showLyricTranslation': showLyricTranslation,
       'showRoman': showRoman,
       'romanPosition': romanPosition.index,
+      'translationPosition': translationPosition.index,
       'showNowPlayingInfo': showNowPlayingInfo,
       'hideOnPause': hideOnPause,
       'lyricTextAlign': lyricTextAlign.index,
@@ -166,6 +172,8 @@ class TextDisplayController extends ChangeNotifier {
       'enableStroke': enableStroke,
       'enablePinTop': enablePinTop,
       'useLightOutline': useLightOutline,
+      'useVerticalDisplayMode': useVerticalDisplayMode,
+      'showDoubleLine': showDoubleLine,
       'hasSpecifiedColor': hasSpecifiedPlayedColor,
       'specifiedColor': playedColor.toARGB32(),
       'hasSpecifiedUnplayedColor': hasSpecifiedUnplayedColor,
@@ -192,10 +200,20 @@ class TextDisplayController extends ChangeNotifier {
       showRoman = (data['showRoman'] as bool?) ?? true;
       romanPosition =
           RomanPosition.values[(data['romanPosition'] as num?)?.toInt() ?? 1];
+      final translationPositionIndex =
+          (data['translationPosition'] as num?)?.toInt() ?? 1;
+      translationPosition =
+          TranslationPosition.values[translationPositionIndex
+              .clamp(0, TranslationPosition.values.length - 1)
+              .toInt()];
       showNowPlayingInfo = (data['showNowPlayingInfo'] as bool?) ?? true;
       hideOnPause = (data['hideOnPause'] as bool?) ?? false;
+      final lyricTextAlignIndex =
+          (data['lyricTextAlign'] as num?)?.toInt() ?? 1;
       lyricTextAlign =
-          LyricTextAlign.values[(data['lyricTextAlign'] as num?)?.toInt() ?? 1];
+          LyricTextAlign.values[lyricTextAlignIndex
+              .clamp(0, LyricTextAlign.values.length - 1)
+              .toInt()];
       final lyricAnimationIndex =
           (data['lyricAnimation'] as num?)?.toInt() ?? 0;
       lyricAnimation =
@@ -205,6 +223,9 @@ class TextDisplayController extends ChangeNotifier {
       enableStroke = (data['enableStroke'] as bool?) ?? true;
       enablePinTop = (data['enablePinTop'] as bool?) ?? true;
       useLightOutline = (data['useLightOutline'] as bool?) ?? false;
+      useVerticalDisplayMode =
+          (data['useVerticalDisplayMode'] as bool?) ?? false;
+      showDoubleLine = (data['showDoubleLine'] as bool?) ?? false;
       hasSpecifiedPlayedColor = (data['hasSpecifiedColor'] as bool?) ?? false;
       if (data['specifiedColor'] != null) {
         playedColor = Color((data['specifiedColor'] as num).toInt());
@@ -255,7 +276,8 @@ class TextDisplayController extends ChangeNotifier {
     lyricTextAlign = switch (lyricTextAlign) {
       LyricTextAlign.left => LyricTextAlign.center,
       LyricTextAlign.center => LyricTextAlign.right,
-      LyricTextAlign.right => LyricTextAlign.left,
+      LyricTextAlign.right => LyricTextAlign.separated,
+      LyricTextAlign.separated => LyricTextAlign.left,
     };
     notifyListeners();
   }
@@ -345,8 +367,17 @@ class TextDisplayController extends ChangeNotifier {
       changed = true;
     }
     if (config['romanPosition'] != null) {
-      romanPosition =
-          RomanPosition.values[(config['romanPosition'] as num).toInt()];
+      final index = (config['romanPosition'] as num).toInt();
+      romanPosition = RomanPosition
+          .values[index.clamp(0, RomanPosition.values.length - 1).toInt()];
+      changed = true;
+    }
+    if (config['translationPosition'] != null) {
+      final index = (config['translationPosition'] as num).toInt();
+      translationPosition =
+          TranslationPosition.values[index
+              .clamp(0, TranslationPosition.values.length - 1)
+              .toInt()];
       changed = true;
     }
     if (config['showNowPlayingInfo'] != null) {
@@ -358,8 +389,9 @@ class TextDisplayController extends ChangeNotifier {
       changed = true;
     }
     if (config['lyricTextAlign'] != null) {
-      lyricTextAlign =
-          LyricTextAlign.values[(config['lyricTextAlign'] as num).toInt()];
+      final index = (config['lyricTextAlign'] as num).toInt();
+      lyricTextAlign = LyricTextAlign
+          .values[index.clamp(0, LyricTextAlign.values.length - 1).toInt()];
       changed = true;
     }
     if (config['lyricAnimation'] != null) {
@@ -380,6 +412,14 @@ class TextDisplayController extends ChangeNotifier {
     }
     if (config['useLightOutline'] != null) {
       useLightOutline = config['useLightOutline'] as bool;
+      changed = true;
+    }
+    if (config['useVerticalDisplayMode'] != null) {
+      useVerticalDisplayMode = config['useVerticalDisplayMode'] as bool;
+      changed = true;
+    }
+    if (config['showDoubleLine'] != null) {
+      showDoubleLine = config['showDoubleLine'] as bool;
       changed = true;
     }
     if (config['playedColor'] != null) {

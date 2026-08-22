@@ -27,4 +27,18 @@ void main() {
 
     expect(overflowCount, 1);
   });
+
+  test('preserves desktop lyric layout config fields', () {
+    final config = DesktopLyricConfigMessage.fromJson(const {
+      'useVerticalDisplayMode': true,
+      'showDoubleLine': true,
+      'translationPosition': 0,
+    });
+
+    expect(config.toJson(), {
+      'useVerticalDisplayMode': true,
+      'showDoubleLine': true,
+      'translationPosition': 0,
+    });
+  });
 }
