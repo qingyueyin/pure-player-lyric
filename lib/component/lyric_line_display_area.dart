@@ -17,6 +17,8 @@ class LyricLineDisplayArea extends StatelessWidget {
   final LyricLineChangedMessage? line;
   final bool isNext;
   final LyricTextAlign? alignment;
+  final bool animateTransition;
+  final bool outgoingOnlyTransition;
 
   /// 双行模式下该槽位在切换方向上的尺寸，让动画位移等于槽位间距
   final double? slotExtent;
@@ -27,6 +29,8 @@ class LyricLineDisplayArea extends StatelessWidget {
     this.isNext = false,
     this.alignment,
     this.slotExtent,
+    this.animateTransition = true,
+    this.outgoingOnlyTransition = false,
   });
 
   @override
@@ -190,27 +194,40 @@ class LyricLineDisplayArea extends StatelessWidget {
           );
         }
 
-        final children = <Widget>[
-          if (hasRoman &&
-              textDisplayController.romanPosition == RomanPosition.aboveText)
-            romanWidget!,
-          if (hasTranslation &&
-              textDisplayController.translationPosition ==
-                  TranslationPosition.beforeText)
-            translationWidget!,
-          lyricWidget,
-          if (hasRoman &&
-              textDisplayController.romanPosition == RomanPosition.between)
-            romanWidget!,
-          if (hasTranslation &&
-              textDisplayController.translationPosition ==
-                  TranslationPosition.afterText)
-            translationWidget!,
-          if (hasRoman &&
-              textDisplayController.romanPosition ==
-                  RomanPosition.belowTranslation)
-            romanWidget!,
-        ];
+        final children = <Widget>[];
+        void addChild(Widget child) {
+          if (children.isNotEmpty) {
+            children.add(
+              vertical ? const SizedBox(width: 4) : const SizedBox(height: 4),
+            );
+          }
+          children.add(child);
+        }
+
+        if (hasRoman &&
+            textDisplayController.romanPosition == RomanPosition.aboveText) {
+          addChild(romanWidget!);
+        }
+        if (hasTranslation &&
+            textDisplayController.translationPosition ==
+                TranslationPosition.beforeText) {
+          addChild(translationWidget!);
+        }
+        addChild(lyricWidget);
+        if (hasRoman &&
+            textDisplayController.romanPosition == RomanPosition.between) {
+          addChild(romanWidget!);
+        }
+        if (hasTranslation &&
+            textDisplayController.translationPosition ==
+                TranslationPosition.afterText) {
+          addChild(translationWidget!);
+        }
+        if (hasRoman &&
+            textDisplayController.romanPosition ==
+                RomanPosition.belowTranslation) {
+          addChild(romanWidget!);
+        }
 
         final child = vertical
             ? Row(
@@ -229,6 +246,8 @@ class LyricLineDisplayArea extends StatelessWidget {
           alignment: switchAlignment,
           vertical: vertical,
           slotExtent: slotExtent,
+          enabled: animateTransition,
+          outgoingOnly: outgoingOnlyTransition,
           child: child,
         );
       },
@@ -243,6 +262,8 @@ class _LyricLineTransition extends StatefulWidget {
     required this.vertical,
     required this.child,
     this.slotExtent,
+    this.enabled = true,
+    this.outgoingOnly = false,
   });
 
   final LyricSwitchAnimation animation;
@@ -250,6 +271,8 @@ class _LyricLineTransition extends StatefulWidget {
   final bool vertical;
   final Widget child;
   final double? slotExtent;
+  final bool enabled;
+  final bool outgoingOnly;
 
   /// 双行模式下纵向动画位移等于槽位高度，让上一行滑出的终点与下一行滑入的起点衔接
   double get _verticalTravelFor =>
@@ -289,6 +312,12 @@ class _LyricLineTransitionState extends State<_LyricLineTransition>
       _currentChild = widget.child;
       return;
     }
+    if (!widget.enabled) {
+      _controller.stop();
+      _previousChild = null;
+      _currentChild = widget.child;
+      return;
+    }
     _previousChild = _currentChild;
     _currentChild = widget.child;
     _controller.forward(from: 0);
@@ -307,9 +336,7 @@ class _LyricLineTransitionState extends State<_LyricLineTransition>
         return Transform.translate(
           offset: Offset(
             0,
-            isPrevious
-                ? -motion * travel
-                : (1.0 - motion) * travel,
+            isPrevious ? -motion * travel : (1.0 - motion) * travel,
           ),
           child: Opacity(opacity: opacity, child: child),
         );
@@ -318,9 +345,7 @@ class _LyricLineTransitionState extends State<_LyricLineTransition>
         return Transform.translate(
           offset: Offset(
             0,
-            isPrevious
-                ? motion * travel
-                : (motion - 1.0) * travel,
+            isPrevious ? motion * travel : (motion - 1.0) * travel,
           ),
           child: Opacity(opacity: opacity, child: child),
         );
@@ -339,9 +364,7 @@ class _LyricLineTransitionState extends State<_LyricLineTransition>
         final travel = widget._horizontalTravelFor;
         return Transform.translate(
           offset: Offset(
-            isPrevious
-                ? -motion * travel
-                : (1.0 - motion) * travel,
+            isPrevious ? -motion * travel : (1.0 - motion) * travel,
             0,
           ),
           child: Opacity(opacity: opacity, child: child),
@@ -350,9 +373,7 @@ class _LyricLineTransitionState extends State<_LyricLineTransition>
         final travel = widget._horizontalTravelFor;
         return Transform.translate(
           offset: Offset(
-            isPrevious
-                ? motion * travel
-                : (motion - 1.0) * travel,
+            isPrevious ? motion * travel : (motion - 1.0) * travel,
             0,
           ),
           child: Opacity(opacity: opacity, child: child),
@@ -375,6 +396,16 @@ class _LyricLineTransitionState extends State<_LyricLineTransition>
         }
         final motion = _lyricSwitchCurve.transform(_controller.value);
         final fade = Curves.easeInOutSine.transform(_controller.value);
+        if (widget.outgoingOnly) {
+          return Stack(
+            clipBehavior: Clip.none,
+            alignment: widget.alignment,
+            children: [
+              _currentChild,
+              _buildLayer(previousChild, motion, fade, isPrevious: true),
+            ],
+          );
+        }
         return Stack(
           clipBehavior: Clip.none,
           alignment: widget.alignment,

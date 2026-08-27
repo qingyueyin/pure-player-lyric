@@ -84,7 +84,9 @@ void main() {
     );
   });
 
-  testWidgets('keeps alternating double-line slots in place', (tester) async {
+  testWidgets('alternates the current line between double-line slots', (
+    tester,
+  ) async {
     final previousDoubleLine = textDisplayController.showDoubleLine;
     final previousAlignment = textDisplayController.lyricTextAlign;
     final previousRoman = textDisplayController.showRoman;
@@ -166,7 +168,9 @@ void main() {
     );
   });
 
-  testWidgets('double-line slide travels a slot height', (tester) async {
+  testWidgets('double-line switch animates only the departed current line', (
+    tester,
+  ) async {
     final previousDoubleLine = textDisplayController.showDoubleLine;
     final previousAnimation = textDisplayController.lyricAnimation;
     final previousRoman = textDisplayController.showRoman;
@@ -190,27 +194,40 @@ void main() {
 
     await tester.pumpWidget(buildLineViewSubject());
     await tester.pump(const Duration(milliseconds: 701));
-    final departingBaseline = tester.getTopLeft(
-      find.byWidgetPredicate(
-        (widget) => widget is LyricTextDisplay && widget.text == '第一行',
-      ),
-    );
-
     DesktopLyricController.instance.lyricLine.value =
         LyricLineChangedMessage.fromJson({
           'content': '第二行',
           'length': const Duration(seconds: 3).inMicroseconds,
           'nextContent': '第三行',
         });
-    await tester.pump(const Duration(milliseconds: 600));
-    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pump(const Duration(milliseconds: 200));
 
-    final departingTop = tester.getTopLeft(
+    expect(
       find.byWidgetPredicate(
         (widget) => widget is LyricTextDisplay && widget.text == '第一行',
       ),
+      findsOneWidget,
     );
-    expect(departingBaseline.dy - departingTop.dy, greaterThan(40));
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is LyricTextDisplay && widget.text == '第二行',
+      ),
+      findsOneWidget,
+    );
+    await tester.pump(const Duration(milliseconds: 701));
+    await tester.pump();
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is LyricTextDisplay && widget.text == '第一行',
+      ),
+      findsNothing,
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is LyricTextDisplay && widget.text == '第三行',
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets(

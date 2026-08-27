@@ -329,7 +329,7 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
   }
   if (message == kSetUnlockButtonAlignmentMessage) {
     unlock_button_alignment_ =
-        std::clamp(static_cast<int>(wparam), 0, 2);
+        std::clamp(static_cast<int>(wparam), 0, 3);
     if (unlock_button_ != nullptr && IsWindowVisible(unlock_button_)) {
       ShowUnlockButton();
     }

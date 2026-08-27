@@ -105,6 +105,8 @@ class _LyricLineViewState extends State<LyricLineView> {
           LyricLineChangedMessage? line,
           bool isNext,
           int slotIndex,
+          bool animateTransition,
+          bool outgoingOnlyTransition,
         ) => _buildSlot(
           context: context,
           textDisplayController: textDisplayController,
@@ -113,6 +115,8 @@ class _LyricLineViewState extends State<LyricLineView> {
           line: line,
           isNext: isNext,
           slotIndex: slotIndex,
+          animateTransition: animateTransition,
+          outgoingOnlyTransition: outgoingOnlyTransition,
           alignmentOverride:
               textDisplayController.lyricTextAlign == LyricTextAlign.separated
               ? (slotIndex == 0 ? LyricTextAlign.left : LyricTextAlign.right)
@@ -120,20 +124,20 @@ class _LyricLineViewState extends State<LyricLineView> {
         );
 
         if (!showDoubleLine) {
-          return slot(lyricLine, false, 0);
+          return slot(lyricLine, false, 0, true, false);
         }
 
         final currentSlotIndex = _lineVersion % 2;
         final first = currentSlotIndex == 0
-            ? slot(lyricLine, false, 0)
+            ? slot(lyricLine, false, 0, false, false)
             : nextLine == null
             ? const SizedBox.shrink()
-            : slot(nextLine, true, 0);
+            : slot(nextLine, true, 0, true, true);
         final second = currentSlotIndex == 1
-            ? slot(lyricLine, false, 1)
+            ? slot(lyricLine, false, 1, false, false)
             : nextLine == null
             ? const SizedBox.shrink()
-            : slot(nextLine, true, 1);
+            : slot(nextLine, true, 1, true, true);
         return vertical
             ? Row(
                 children: [
@@ -159,6 +163,8 @@ class _LyricLineViewState extends State<LyricLineView> {
     required LyricLineChangedMessage? line,
     required bool isNext,
     required int slotIndex,
+    required bool animateTransition,
+    required bool outgoingOnlyTransition,
     LyricTextAlign? alignmentOverride,
   }) {
     final effectiveAlignment =
@@ -198,6 +204,8 @@ class _LyricLineViewState extends State<LyricLineView> {
                   line: line,
                   isNext: isNext,
                   alignment: effectiveAlignment,
+                  animateTransition: animateTransition,
+                  outgoingOnlyTransition: outgoingOnlyTransition,
                   slotExtent: showDoubleLine
                       ? (vertical
                             ? constraints.maxWidth
