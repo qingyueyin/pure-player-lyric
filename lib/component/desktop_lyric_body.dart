@@ -28,6 +28,8 @@ class _DesktopLyricBodyState extends State<DesktopLyricBody> {
   bool _isResizing = false;
   Timer? _resizeReleaseTimer;
   Timer? _pinTimer;
+  Timer? _hoverHideTimer;
+  bool _hoverHidden = false;
   int? _hWnd;
   int? _startCursorX;
   int? _startCursorY;
@@ -40,7 +42,12 @@ class _DesktopLyricBodyState extends State<DesktopLyricBody> {
     DesktopLyricController.instance.isLocked.addListener(_handleLockChanged);
     textDisplayController.addListener(_syncPinTop);
     textDisplayController.addListener(_syncWindowSizeForMode);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _syncPinTop());
+    textDisplayController.addListener(_handleDisplaySettingsChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncPinTop();
+      _syncWindowSizeForMode();
+      _updateHoverHideTimer();
+    });
     _pinTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!textDisplayController.enablePinTop) return;
       final hWnd = _ensureHwnd();
@@ -61,9 +68,11 @@ class _DesktopLyricBodyState extends State<DesktopLyricBody> {
   void dispose() {
     _resizeReleaseTimer?.cancel();
     _pinTimer?.cancel();
+    _hoverHideTimer?.cancel();
     DesktopLyricController.instance.isLocked.removeListener(_handleLockChanged);
     textDisplayController.removeListener(_syncPinTop);
     textDisplayController.removeListener(_syncWindowSizeForMode);
+    textDisplayController.removeListener(_handleDisplaySettingsChanged);
     if (_isResizing) {
       DesktopLyricController.instance.setWindowInteractionActive(false);
     }
@@ -71,8 +80,67 @@ class _DesktopLyricBodyState extends State<DesktopLyricBody> {
   }
 
   void _handleLockChanged() {
-    if (!DesktopLyricController.instance.isLocked.value || !isHovering) return;
-    setState(() => isHovering = false);
+    if (!DesktopLyricController.instance.isLocked.value && isHovering) {
+      setState(() => isHovering = false);
+    }
+    _updateHoverHideTimer();
+  }
+
+  void _handleDisplaySettingsChanged() {
+    _updateHoverHideTimer();
+  }
+
+  void _updateHoverHideTimer() {
+    final shouldPoll =
+        DesktopLyricController.instance.isLocked.value &&
+        textDisplayController.hoverHide;
+    if (shouldPoll) {
+      _pollHoverHide();
+      _hoverHideTimer ??= Timer.periodic(
+        const Duration(milliseconds: 200),
+        (_) => _pollHoverHide(),
+      );
+    } else {
+      _hoverHideTimer?.cancel();
+      _hoverHideTimer = null;
+      if (_hoverHidden) setState(() => _hoverHidden = false);
+    }
+  }
+
+  void _pollHoverHide() {
+    final hWnd = _ensureHwnd();
+    if (hWnd == null) return;
+    final point = ffi.calloc<win32.POINT>();
+    final rect = ffi.calloc<win32.RECT>();
+    final hasCursor = win32.GetCursorPos(point) != 0;
+    final hasWindow = win32.GetWindowRect(hWnd, rect) != 0;
+    final inside =
+        hasCursor &&
+        hasWindow &&
+        point.ref.x >= rect.ref.left &&
+        point.ref.x < rect.ref.right &&
+        point.ref.y >= rect.ref.top &&
+        point.ref.y < rect.ref.bottom;
+    ffi.calloc.free(point);
+    ffi.calloc.free(rect);
+    final hidden = !inside;
+    if (_hoverHidden == hidden || !mounted) return;
+    setState(() => _hoverHidden = hidden);
+  }
+
+  void _saveWindowBounds() {
+    final hWnd = _ensureHwnd();
+    if (hWnd == null) return;
+    final rect = ffi.calloc<win32.RECT>();
+    if (win32.GetWindowRect(hWnd, rect) != 0) {
+      textDisplayController.updateWindowBounds(
+        x: rect.ref.left.toDouble(),
+        y: rect.ref.top.toDouble(),
+        width: (rect.ref.right - rect.ref.left).toDouble(),
+        height: (rect.ref.bottom - rect.ref.top).toDouble(),
+      );
+    }
+    ffi.calloc.free(rect);
   }
 
   void _syncPinTop() {
@@ -92,14 +160,24 @@ class _DesktopLyricBodyState extends State<DesktopLyricBody> {
   }
 
   bool? _lastVerticalMode;
+  bool? _lastMultiLineMode;
 
   /// 竖排/横排切换时自动调整窗口尺寸，让竖排歌词有足够高度
   void _syncWindowSizeForMode() {
     final vertical = textDisplayController.useVerticalDisplayMode;
-    if (_lastVerticalMode == vertical) return;
+    final multiLine = textDisplayController.useMultiLineMode;
+    final isInitialSync =
+        _lastVerticalMode == null && _lastMultiLineMode == null;
+    if (_lastVerticalMode == vertical && _lastMultiLineMode == multiLine) {
+      return;
+    }
     _lastVerticalMode = vertical;
+    _lastMultiLineMode = multiLine;
+    if (isInitialSync && textDisplayController.hasWindowBounds) return;
     windowManager.setSize(
-      vertical ? const Size(220, 900) : const Size(800, 180),
+      vertical
+          ? const Size(220, 900)
+          : Size(800, textDisplayController.useMultiLineMode ? 420 : 180),
     );
   }
 
@@ -133,50 +211,6 @@ class _DesktopLyricBodyState extends State<DesktopLyricBody> {
     ffi.calloc.free(rect);
   }
 
-  Rect? _getBoundsForWindow(int hWnd) {
-    final rect = ffi.calloc<win32.RECT>();
-    win32.GetWindowRect(hWnd, rect);
-    final windowRect = Rect.fromLTRB(
-      rect.ref.left.toDouble(),
-      rect.ref.top.toDouble(),
-      rect.ref.right.toDouble(),
-      rect.ref.bottom.toDouble(),
-    );
-    ffi.calloc.free(rect);
-
-    final windowCenterX = windowRect.center.dx;
-    final windowCenterY = windowRect.center.dy;
-
-    final point = ffi.calloc<win32.POINT>();
-    point.ref.x = windowCenterX.toInt();
-    point.ref.y = windowCenterY.toInt();
-    var monitor = win32.MonitorFromPoint(
-      point.ref,
-      win32.MONITOR_DEFAULTTONEAREST,
-    );
-    ffi.calloc.free(point);
-
-    if (monitor == 0) {
-      monitor = win32.MonitorFromWindow(hWnd, win32.MONITOR_DEFAULTTONEAREST);
-    }
-
-    if (monitor == 0) return null;
-
-    final monitorInfo = ffi.calloc<win32.MONITORINFO>();
-    monitorInfo.ref.cbSize = sizeOf<win32.MONITORINFO>();
-    win32.GetMonitorInfo(monitor, monitorInfo);
-
-    final monitorRect = Rect.fromLTRB(
-      monitorInfo.ref.rcMonitor.left.toDouble(),
-      monitorInfo.ref.rcMonitor.top.toDouble(),
-      monitorInfo.ref.rcMonitor.right.toDouble(),
-      monitorInfo.ref.rcMonitor.bottom.toDouble(),
-    );
-    ffi.calloc.free(monitorInfo);
-
-    return monitorRect;
-  }
-
   void _updateMove() {
     if (DesktopLyricController.instance.isLocked.value) return;
     final hWnd = _ensureHwnd();
@@ -197,24 +231,37 @@ class _DesktopLyricBodyState extends State<DesktopLyricBody> {
     var newLeft = _startWindowLeft! + dx;
     var newTop = _startWindowTop! + dy;
 
-    final monitorRect = _getBoundsForWindow(hWnd);
-    if (monitorRect != null) {
-      final windowWidth = monitorRect.width * 0.3;
-      final windowHeight = monitorRect.height * 0.3;
-
-      if (newLeft + windowWidth ~/ 2 < monitorRect.left) {
-        newLeft = (monitorRect.left - windowWidth / 2).toInt();
+    final windowRect = ffi.calloc<win32.RECT>();
+    if (win32.GetWindowRect(hWnd, windowRect) != 0) {
+      final windowWidth = windowRect.ref.right - windowRect.ref.left;
+      final windowHeight = windowRect.ref.bottom - windowRect.ref.top;
+      final targetPoint = ffi.calloc<win32.POINT>();
+      targetPoint.ref.x = newLeft + windowWidth ~/ 2;
+      targetPoint.ref.y = newTop + windowHeight ~/ 2;
+      final monitor = win32.MonitorFromPoint(
+        targetPoint.ref,
+        win32.MONITOR_DEFAULTTONEAREST,
+      );
+      final monitorInfo = ffi.calloc<win32.MONITORINFO>();
+      monitorInfo.ref.cbSize = sizeOf<win32.MONITORINFO>();
+      if (monitor != 0 && win32.GetMonitorInfo(monitor, monitorInfo) != 0) {
+        final monitorRect = monitorInfo.ref.rcMonitor;
+        const visibleBand = 60;
+        final minLeft = monitorRect.left - windowWidth + visibleBand;
+        final maxLeft = monitorRect.right - visibleBand;
+        final minTop = monitorRect.top - windowHeight + visibleBand;
+        final maxTop = monitorRect.bottom - visibleBand;
+        newLeft = minLeft <= maxLeft
+            ? newLeft.clamp(minLeft, maxLeft).toInt()
+            : monitorRect.left;
+        newTop = minTop <= maxTop
+            ? newTop.clamp(minTop, maxTop).toInt()
+            : monitorRect.top;
       }
-      if (newLeft - windowWidth ~/ 2 > monitorRect.right) {
-        newLeft = (monitorRect.right - windowWidth / 2).toInt();
-      }
-      if (newTop + windowHeight ~/ 2 < monitorRect.top) {
-        newTop = (monitorRect.top - windowHeight / 2).toInt();
-      }
-      if (newTop - windowHeight ~/ 2 > monitorRect.bottom) {
-        newTop = (monitorRect.bottom - windowHeight / 2).toInt();
-      }
+      ffi.calloc.free(monitorInfo);
+      ffi.calloc.free(targetPoint);
     }
+    ffi.calloc.free(windowRect);
 
     win32.SetWindowPos(
       hWnd,
@@ -233,6 +280,7 @@ class _DesktopLyricBodyState extends State<DesktopLyricBody> {
     _startWindowLeft = null;
     _startWindowTop = null;
     DesktopLyricController.instance.setWindowInteractionActive(false);
+    _saveWindowBounds();
   }
 
   void _startResize(ResizeEdge edge) {
@@ -253,6 +301,7 @@ class _DesktopLyricBodyState extends State<DesktopLyricBody> {
     _resizeReleaseTimer = null;
     _isResizing = false;
     DesktopLyricController.instance.setWindowInteractionActive(false);
+    _saveWindowBounds();
   }
 
   @override
@@ -265,73 +314,76 @@ class _DesktopLyricBodyState extends State<DesktopLyricBody> {
         valueListenable: backgroundOpacity,
         builder: (context, opacity, _) {
           final baseOpacity = opacity;
-          final hovering = !locked && isHovering;
-          final effectiveOpacity = hovering
-              ? (baseOpacity < 0.04 ? 0.04 : baseOpacity)
-              : baseOpacity;
+          final effectiveOpacity = !locked && isHovering
+              ? (baseOpacity < 0.12 ? 0.12 : baseOpacity)
+              : 0.0;
           final background = Color(
             theme.surfaceContainer,
           ).withValues(alpha: effectiveOpacity);
-          return Scaffold(
-            backgroundColor: background,
-            body: DragToResizeArea(
-              enableResizeEdges: locked
-                  ? const []
-                  : const [
-                      ResizeEdge.left,
-                      ResizeEdge.right,
-                      ResizeEdge.top,
-                      ResizeEdge.bottom,
-                      ResizeEdge.topLeft,
-                      ResizeEdge.topRight,
-                      ResizeEdge.bottomLeft,
-                      ResizeEdge.bottomRight,
-                    ],
-              child: Stack(
-                children: [
-                  GestureDetector(
-                    behavior: HitTestBehavior.translucent,
-                    onPanStart: locked ? null : (_) => _startMove(),
-                    onPanUpdate: locked ? null : (_) => _updateMove(),
-                    onPanEnd: locked ? null : (_) => _endMove(),
-                    onPanCancel: locked ? null : _endMove,
-                    child: locked
-                        ? const SizedBox(
-                            width: double.infinity,
-                            height: double.infinity,
-                            child: DesktopLyricForeground(isHovering: false),
-                          )
-                        : MouseRegion(
-                            onEnter: (_) {
-                              setState(() {
-                                isHovering = true;
-                              });
-                            },
-                            onExit: (_) {
-                              setState(() {
-                                isHovering = false;
-                              });
-                            },
-                            child: SizedBox(
+          return AnimatedOpacity(
+            opacity: locked && _hoverHidden ? 0.05 : 1.0,
+            duration: const Duration(milliseconds: 150),
+            child: Scaffold(
+              backgroundColor: background,
+              body: DragToResizeArea(
+                enableResizeEdges: locked
+                    ? const []
+                    : const [
+                        ResizeEdge.left,
+                        ResizeEdge.right,
+                        ResizeEdge.top,
+                        ResizeEdge.bottom,
+                        ResizeEdge.topLeft,
+                        ResizeEdge.topRight,
+                        ResizeEdge.bottomLeft,
+                        ResizeEdge.bottomRight,
+                      ],
+                child: Stack(
+                  children: [
+                    GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onPanStart: locked ? null : (_) => _startMove(),
+                      onPanUpdate: locked ? null : (_) => _updateMove(),
+                      onPanEnd: locked ? null : (_) => _endMove(),
+                      onPanCancel: locked ? null : _endMove,
+                      child: locked
+                          ? const SizedBox(
                               width: double.infinity,
                               height: double.infinity,
-                              child: DesktopLyricForeground(
-                                isHovering: isHovering,
+                              child: DesktopLyricForeground(isHovering: false),
+                            )
+                          : MouseRegion(
+                              onEnter: (_) {
+                                setState(() {
+                                  isHovering = true;
+                                });
+                              },
+                              onExit: (_) {
+                                setState(() {
+                                  isHovering = false;
+                                });
+                              },
+                              child: SizedBox(
+                                width: double.infinity,
+                                height: double.infinity,
+                                child: DesktopLyricForeground(
+                                  isHovering: isHovering,
+                                ),
                               ),
                             ),
-                          ),
-                  ),
-                  if (!locked) ...[
-                    _buildResizeHandle(ResizeEdge.left),
-                    _buildResizeHandle(ResizeEdge.right),
-                    _buildResizeHandle(ResizeEdge.top),
-                    _buildResizeHandle(ResizeEdge.bottom),
-                    _buildResizeHandle(ResizeEdge.topLeft),
-                    _buildResizeHandle(ResizeEdge.topRight),
-                    _buildResizeHandle(ResizeEdge.bottomLeft),
-                    _buildResizeHandle(ResizeEdge.bottomRight),
+                    ),
+                    if (!locked) ...[
+                      _buildResizeHandle(ResizeEdge.left),
+                      _buildResizeHandle(ResizeEdge.right),
+                      _buildResizeHandle(ResizeEdge.top),
+                      _buildResizeHandle(ResizeEdge.bottom),
+                      _buildResizeHandle(ResizeEdge.topLeft),
+                      _buildResizeHandle(ResizeEdge.topRight),
+                      _buildResizeHandle(ResizeEdge.bottomLeft),
+                      _buildResizeHandle(ResizeEdge.bottomRight),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           );
