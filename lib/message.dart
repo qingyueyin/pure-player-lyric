@@ -237,6 +237,74 @@ class LyricWord {
   Map<String, dynamic> toJson() => _$LyricWordToJson(this);
 }
 
+class FullLyricLine {
+  final int lineId;
+  final String? content;
+  final String? translation;
+  final String? romanLyric;
+  final int startMs;
+  final int lengthMs;
+  final List<LyricWord>? words;
+  final int? highlightDeadlineMs;
+  final int? switchStartMs;
+
+  const FullLyricLine(
+    this.lineId,
+    this.content,
+    this.translation,
+    this.romanLyric,
+    this.startMs,
+    this.lengthMs,
+    this.words, [
+    this.highlightDeadlineMs,
+    this.switchStartMs,
+  ]);
+
+  factory FullLyricLine.fromJson(Map<String, dynamic> json) => FullLyricLine(
+    (json['lineId'] as num).toInt(),
+    json['content'] as String?,
+    json['translation'] as String?,
+    json['romanLyric'] as String?,
+    (json['startMs'] as num).toInt(),
+    (json['lengthMs'] as num).toInt(),
+    (json['words'] as List<dynamic>?)
+        ?.map((e) => LyricWord.fromJson(e as Map<String, dynamic>))
+        .toList(),
+    (json['highlightDeadlineMs'] as num?)?.toInt(),
+    (json['switchStartMs'] as num?)?.toInt(),
+  );
+
+  Map<String, dynamic> toJson() => {
+    'lineId': lineId,
+    'content': content,
+    'translation': translation,
+    'romanLyric': romanLyric,
+    'startMs': startMs,
+    'lengthMs': lengthMs,
+    'words': words?.map((word) => word.toJson()).toList(),
+    if (highlightDeadlineMs != null) 'highlightDeadlineMs': highlightDeadlineMs,
+    if (switchStartMs != null) 'switchStartMs': switchStartMs,
+  };
+}
+
+class FullLyricChangedMessage extends Message {
+  final List<FullLyricLine> lines;
+
+  const FullLyricChangedMessage(this.lines);
+
+  factory FullLyricChangedMessage.fromJson(Map<String, dynamic> json) =>
+      FullLyricChangedMessage(
+        (json['lines'] as List<dynamic>)
+            .map((e) => FullLyricLine.fromJson(e as Map<String, dynamic>))
+            .toList(),
+      );
+
+  @override
+  Map<String, dynamic> _toJson() => {
+    'lines': lines.map((line) => line.toJson()).toList(),
+  };
+}
+
 /// player -> desktop lyric
 @JsonSerializable()
 class ThemeChangedMessage extends Message {
@@ -292,6 +360,14 @@ class DesktopLyricConfigMessage extends Message {
   final bool? useLightOutline;
   final bool? useVerticalDisplayMode;
   final bool? showDoubleLine;
+  final double? lineGap;
+  final bool? hoverHide;
+  final bool? fullscreenHide;
+  final bool? enablePinTop;
+  final bool? useMultiLineMode;
+  final int? multiLineAnimation;
+  final bool? hidePlayedLines;
+  final double? fontOpacity;
 
   const DesktopLyricConfigMessage({
     this.lyricFontSize,
@@ -313,6 +389,14 @@ class DesktopLyricConfigMessage extends Message {
     this.useLightOutline,
     this.useVerticalDisplayMode,
     this.showDoubleLine,
+    this.lineGap,
+    this.hoverHide,
+    this.fullscreenHide,
+    this.enablePinTop,
+    this.useMultiLineMode,
+    this.multiLineAnimation,
+    this.hidePlayedLines,
+    this.fontOpacity,
   });
 
   factory DesktopLyricConfigMessage.fromJson(Map<String, dynamic> json) =>
@@ -336,6 +420,14 @@ class DesktopLyricConfigMessage extends Message {
         useLightOutline: json['useLightOutline'] as bool?,
         useVerticalDisplayMode: json['useVerticalDisplayMode'] as bool?,
         showDoubleLine: json['showDoubleLine'] as bool?,
+        lineGap: (json['lineGap'] as num?)?.toDouble(),
+        hoverHide: json['hoverHide'] as bool?,
+        fullscreenHide: json['fullscreenHide'] as bool?,
+        enablePinTop: json['enablePinTop'] as bool?,
+        useMultiLineMode: json['useMultiLineMode'] as bool?,
+        multiLineAnimation: (json['multiLineAnimation'] as num?)?.toInt(),
+        hidePlayedLines: json['hidePlayedLines'] as bool?,
+        fontOpacity: (json['fontOpacity'] as num?)?.toDouble(),
       );
 
   Map<String, dynamic> toJson() => _toJson();
@@ -363,5 +455,13 @@ class DesktopLyricConfigMessage extends Message {
     if (useVerticalDisplayMode != null)
       'useVerticalDisplayMode': useVerticalDisplayMode,
     if (showDoubleLine != null) 'showDoubleLine': showDoubleLine,
+    if (lineGap != null) 'lineGap': lineGap,
+    if (hoverHide != null) 'hoverHide': hoverHide,
+    if (fullscreenHide != null) 'fullscreenHide': fullscreenHide,
+    if (enablePinTop != null) 'enablePinTop': enablePinTop,
+    if (useMultiLineMode != null) 'useMultiLineMode': useMultiLineMode,
+    if (multiLineAnimation != null) 'multiLineAnimation': multiLineAnimation,
+    if (hidePlayedLines != null) 'hidePlayedLines': hidePlayedLines,
+    if (fontOpacity != null) 'fontOpacity': fontOpacity,
   };
 }

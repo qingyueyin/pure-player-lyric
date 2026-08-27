@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pure_player_lyric/message.dart';
 
@@ -33,12 +35,42 @@ void main() {
       'useVerticalDisplayMode': true,
       'showDoubleLine': true,
       'translationPosition': 0,
+      'hidePlayedLines': true,
+      'fontOpacity': 0.65,
     });
 
     expect(config.toJson(), {
       'useVerticalDisplayMode': true,
       'showDoubleLine': true,
       'translationPosition': 0,
+      'hidePlayedLines': true,
+      'fontOpacity': 0.65,
     });
+  });
+
+  test('round-trips the full lyric snapshot', () {
+    const message = FullLyricChangedMessage([
+      FullLyricLine(
+        4,
+        'line',
+        'translation',
+        'roman',
+        1200,
+        3000,
+        [LyricWord(0, 1500, 'line')],
+        2600,
+        880,
+      ),
+    ]);
+
+    final frame =
+        jsonDecode(message.buildMessageJson()) as Map<String, dynamic>;
+    final decoded = FullLyricChangedMessage.fromJson(
+      frame['message'] as Map<String, dynamic>,
+    );
+    expect(decoded.lines.single.lineId, 4);
+    expect(decoded.lines.single.words!.single.startMs, 0);
+    expect(decoded.lines.single.translation, 'translation');
+    expect(decoded.lines.single.switchStartMs, 880);
   });
 }
