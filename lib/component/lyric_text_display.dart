@@ -48,9 +48,15 @@ class LyricTextDisplay extends StatelessWidget {
     if (text.length == 1 && !_alphanumericChar.hasMatch(text)) {
       return _buildText(text);
     }
+    final mainAxisAlignment = switch (textAlign) {
+      TextAlign.left || TextAlign.start => MainAxisAlignment.start,
+      TextAlign.center => MainAxisAlignment.center,
+      TextAlign.right || TextAlign.end => MainAxisAlignment.end,
+      _ => MainAxisAlignment.start,
+    };
     return Flex(
       direction: Axis.vertical,
-      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisAlignment: mainAxisAlignment,
       crossAxisAlignment: CrossAxisAlignment.center,
       mainAxisSize: MainAxisSize.min,
       children: [

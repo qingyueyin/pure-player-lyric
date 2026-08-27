@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:pure_player_lyric/component/action_row.dart';
 import 'package:pure_player_lyric/component/lyric_line_view.dart';
+import 'package:pure_player_lyric/component/multi_line_lyric_view.dart';
 import 'package:pure_player_lyric/component/now_playing_info.dart';
 import 'package:pure_player_lyric/desktop_lyric_controller.dart';
 import 'package:flutter/material.dart';
@@ -122,6 +123,8 @@ enum LyricSwitchAnimation {
   slideRight,
 }
 
+enum MultiLineAnimationStyle { smooth, spring }
+
 enum RomanPosition { aboveText, between, belowTranslation }
 
 enum TranslationPosition { beforeText, afterText }
@@ -138,11 +141,31 @@ class TextDisplayController extends ChangeNotifier {
   bool hideOnPause = false;
   LyricTextAlign lyricTextAlign = LyricTextAlign.center;
   LyricSwitchAnimation lyricAnimation = LyricSwitchAnimation.slideUp;
+  MultiLineAnimationStyle multiLineAnimation = MultiLineAnimationStyle.smooth;
   bool enableStroke = true;
   bool enablePinTop = true;
   bool useLightOutline = false;
   bool useVerticalDisplayMode = false;
   bool showDoubleLine = false;
+  bool useMultiLineMode = false;
+  bool hidePlayedLines = false;
+  double lineGap = 4.0;
+  double fontOpacity = 1.0;
+  bool hoverHide = false;
+  bool fullscreenHide = false;
+  double? windowX;
+  double? windowY;
+  double? windowWidth;
+  double? windowHeight;
+
+  bool get hasWindowBounds {
+    final values = [windowX, windowY, windowWidth, windowHeight];
+    return values.every((value) => value != null && value.isFinite) &&
+        windowWidth! > 0 &&
+        windowWidth! < 10000 &&
+        windowHeight! > 0 &&
+        windowHeight! < 10000;
+  }
 
   static String get _settingsPath {
     final appData = Platform.environment['APPDATA'] ?? '.';
@@ -169,11 +192,22 @@ class TextDisplayController extends ChangeNotifier {
       'hideOnPause': hideOnPause,
       'lyricTextAlign': lyricTextAlign.index,
       'lyricAnimation': lyricAnimation.index,
+      'multiLineAnimation': multiLineAnimation.index,
       'enableStroke': enableStroke,
       'enablePinTop': enablePinTop,
       'useLightOutline': useLightOutline,
       'useVerticalDisplayMode': useVerticalDisplayMode,
       'showDoubleLine': showDoubleLine,
+      'useMultiLineMode': useMultiLineMode,
+      'hidePlayedLines': hidePlayedLines,
+      'lineGap': lineGap,
+      'fontOpacity': fontOpacity,
+      'hoverHide': hoverHide,
+      'fullscreenHide': fullscreenHide,
+      'windowX': windowX,
+      'windowY': windowY,
+      'windowWidth': windowWidth,
+      'windowHeight': windowHeight,
       'hasSpecifiedColor': hasSpecifiedPlayedColor,
       'specifiedColor': playedColor.toARGB32(),
       'hasSpecifiedUnplayedColor': hasSpecifiedUnplayedColor,
@@ -220,12 +254,31 @@ class TextDisplayController extends ChangeNotifier {
           LyricSwitchAnimation.values[lyricAnimationIndex
               .clamp(0, LyricSwitchAnimation.values.length - 1)
               .toInt()];
+      final multiLineAnimationIndex = (data['multiLineAnimation'] as num?)
+          ?.toInt();
+      multiLineAnimation = multiLineAnimationIndex == 1
+          ? MultiLineAnimationStyle.spring
+          : MultiLineAnimationStyle.smooth;
       enableStroke = (data['enableStroke'] as bool?) ?? true;
       enablePinTop = (data['enablePinTop'] as bool?) ?? true;
       useLightOutline = (data['useLightOutline'] as bool?) ?? false;
       useVerticalDisplayMode =
           (data['useVerticalDisplayMode'] as bool?) ?? false;
       showDoubleLine = (data['showDoubleLine'] as bool?) ?? false;
+      useMultiLineMode = (data['useMultiLineMode'] as bool?) ?? false;
+      hidePlayedLines = (data['hidePlayedLines'] as bool?) ?? false;
+      lineGap = ((data['lineGap'] as num?)?.toDouble() ?? 4.0)
+          .clamp(0, 16)
+          .toDouble();
+      fontOpacity = ((data['fontOpacity'] as num?)?.toDouble() ?? 1.0)
+          .clamp(0, 1)
+          .toDouble();
+      hoverHide = (data['hoverHide'] as bool?) ?? false;
+      fullscreenHide = (data['fullscreenHide'] as bool?) ?? false;
+      windowX = (data['windowX'] as num?)?.toDouble();
+      windowY = (data['windowY'] as num?)?.toDouble();
+      windowWidth = (data['windowWidth'] as num?)?.toDouble();
+      windowHeight = (data['windowHeight'] as num?)?.toDouble();
       hasSpecifiedPlayedColor = (data['hasSpecifiedColor'] as bool?) ?? false;
       if (data['specifiedColor'] != null) {
         playedColor = Color((data['specifiedColor'] as num).toInt());
@@ -238,6 +291,7 @@ class TextDisplayController extends ChangeNotifier {
       if (data['backgroundOpacity'] != null) {
         backgroundOpacity.value = (data['backgroundOpacity'] as num).toDouble();
       }
+      _normalizeDependentSettings();
       notifyListeners();
     } catch (_) {}
   }
@@ -402,6 +456,13 @@ class TextDisplayController extends ChangeNotifier {
               .toInt()];
       changed = true;
     }
+    if (config['multiLineAnimation'] != null) {
+      final index = (config['multiLineAnimation'] as num).toInt();
+      multiLineAnimation = index == 1
+          ? MultiLineAnimationStyle.spring
+          : MultiLineAnimationStyle.smooth;
+      changed = true;
+    }
     if (config['enableStroke'] != null) {
       enableStroke = config['enableStroke'] as bool;
       changed = true;
@@ -422,6 +483,37 @@ class TextDisplayController extends ChangeNotifier {
       showDoubleLine = config['showDoubleLine'] as bool;
       changed = true;
     }
+    if (config['enablePinTop'] != null) {
+      enablePinTop = config['enablePinTop'] as bool;
+      changed = true;
+    }
+    if (config['useMultiLineMode'] != null) {
+      useMultiLineMode = config['useMultiLineMode'] as bool;
+      changed = true;
+    }
+    if (config['hidePlayedLines'] != null) {
+      hidePlayedLines = config['hidePlayedLines'] as bool;
+      changed = true;
+    }
+    if (config['lineGap'] != null) {
+      lineGap = (config['lineGap'] as num).toDouble().clamp(0, 16).toDouble();
+      changed = true;
+    }
+    if (config['fontOpacity'] != null) {
+      fontOpacity = (config['fontOpacity'] as num)
+          .toDouble()
+          .clamp(0, 1)
+          .toDouble();
+      changed = true;
+    }
+    if (config['hoverHide'] != null) {
+      hoverHide = config['hoverHide'] as bool;
+      changed = true;
+    }
+    if (config['fullscreenHide'] != null) {
+      fullscreenHide = config['fullscreenHide'] as bool;
+      changed = true;
+    }
     if (config['playedColor'] != null) {
       playedColor = Color((config['playedColor'] as num).toInt());
       hasSpecifiedPlayedColor = true;
@@ -432,7 +524,35 @@ class TextDisplayController extends ChangeNotifier {
       hasSpecifiedUnplayedColor = true;
       changed = true;
     }
-    if (changed) notifyListeners();
+    _normalizeDependentSettings();
+    if (changed) {
+      notifyListeners();
+      _saveDebounce?.cancel();
+      save();
+    }
+  }
+
+  void _normalizeDependentSettings() {
+    if (!useVerticalDisplayMode) {
+      translationPosition = TranslationPosition.afterText;
+    }
+    if (!showDoubleLine && lyricTextAlign == LyricTextAlign.separated) {
+      lyricTextAlign = LyricTextAlign.center;
+    }
+  }
+
+  void updateWindowBounds({
+    required double x,
+    required double y,
+    required double width,
+    required double height,
+  }) {
+    if (![x, y, width, height].every((value) => value.isFinite)) return;
+    windowX = x;
+    windowY = y;
+    windowWidth = width;
+    windowHeight = height;
+    notifyListeners();
   }
 }
 
@@ -463,7 +583,14 @@ class DesktopLyricForeground extends StatelessWidget {
                       ),
               ),
               const SizedBox(height: 8),
-              const Expanded(child: LyricLineView()),
+              Expanded(
+                child: Opacity(
+                  opacity: textDisplayController.fontOpacity,
+                  child: textDisplayController.useMultiLineMode
+                      ? const MultiLineLyricView()
+                      : const LyricLineView(),
+                ),
+              ),
             ],
           ),
         ),
