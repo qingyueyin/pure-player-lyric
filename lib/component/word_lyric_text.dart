@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:pure_player_lyric/component/foreground.dart';
 import 'package:pure_player_lyric/message.dart';
 import 'package:flutter/foundation.dart';
@@ -44,6 +46,7 @@ class WordLyricText extends StatefulWidget {
   final bool enableOutline;
   final Color outlineColor;
   final bool vertical;
+  final double? maxWidth;
 
   const WordLyricText({
     super.key,
@@ -59,6 +62,7 @@ class WordLyricText extends StatefulWidget {
     this.enableOutline = true,
     this.outlineColor = Colors.black,
     this.vertical = false,
+    this.maxWidth,
   });
 
   @override
@@ -118,7 +122,9 @@ class _WordLyricTextState extends State<WordLyricText>
         oldWidget.alpha != widget.alpha ||
         oldWidget.enableOutline != widget.enableOutline ||
         oldWidget.outlineColor != widget.outlineColor ||
-        oldWidget.vertical != widget.vertical;
+        oldWidget.vertical != widget.vertical ||
+        oldWidget.maxWidth != widget.maxWidth ||
+        oldWidget.textAlign != widget.textAlign;
 
     if (contentChanged) {
       _resetFromLine();
@@ -155,6 +161,8 @@ class _WordLyricTextState extends State<WordLyricText>
       outlineColor: applyLyricOpacity(widget.outlineColor, widget.alpha),
       enableOutline: widget.enableOutline,
       vertical: widget.vertical,
+      maxWidth: widget.vertical ? null : widget.maxWidth,
+      textAlign: widget.textAlign,
     );
     previous?.dispose();
   }
@@ -287,6 +295,7 @@ class _WordSegment {
   final double height;
   final int wordStartMs;
   final int wordLengthMs;
+  final List<Rect> boxes;
 
   const _WordSegment({
     required this.x,
@@ -295,6 +304,7 @@ class _WordSegment {
     required this.height,
     required this.wordStartMs,
     required this.wordLengthMs,
+    this.boxes = const [],
   });
 }
 
@@ -347,12 +357,18 @@ class _WordLyricRenderCache {
   final bool vertical;
   final List<_CharLayout> charLayouts;
 
-  static TextPainter _layoutLine(String content, TextStyle style) {
+  static TextPainter _layoutLine(
+    String content,
+    TextStyle style, {
+    double? maxWidth,
+    TextAlign textAlign = TextAlign.left,
+  }) {
     return TextPainter(
       text: TextSpan(text: content, style: style),
       textDirection: TextDirection.ltr,
-      maxLines: 1,
-    )..layout();
+      textAlign: textAlign,
+      maxLines: maxWidth == null ? 1 : null,
+    )..layout(maxWidth: maxWidth ?? double.infinity);
   }
 
   static _WordLyricRenderCache create({
@@ -364,6 +380,8 @@ class _WordLyricRenderCache {
     required Color outlineColor,
     required bool enableOutline,
     required bool vertical,
+    required double? maxWidth,
+    required TextAlign textAlign,
   }) {
     final dimFillStyle = TextStyle(
       fontSize: fontSize,
@@ -392,10 +410,25 @@ class _WordLyricRenderCache {
         wordRanges.add((start: start, end: buffer.length, word: word));
       }
       final content = buffer.toString();
-      final dimFillPainter = _layoutLine(content, dimFillStyle);
-      final brightFillPainter = _layoutLine(content, brightFillStyle);
+      final dimFillPainter = _layoutLine(
+        content,
+        dimFillStyle,
+        maxWidth: maxWidth,
+        textAlign: textAlign,
+      );
+      final brightFillPainter = _layoutLine(
+        content,
+        brightFillStyle,
+        maxWidth: maxWidth,
+        textAlign: textAlign,
+      );
       final strokePainter = enableOutline
-          ? _layoutLine(content, strokeStyle)
+          ? _layoutLine(
+              content,
+              strokeStyle,
+              maxWidth: maxWidth,
+              textAlign: textAlign,
+            )
           : null;
       final segments = <_WordSegment>[];
       var previousEnd = 0.0;
@@ -421,6 +454,12 @@ class _WordLyricRenderCache {
             height: dimFillPainter.height,
             wordStartMs: range.word.startMs,
             wordLengthMs: range.word.lengthMs,
+            boxes: boxes
+                .map(
+                  (box) =>
+                      Rect.fromLTRB(box.left, box.top, box.right, box.bottom),
+                )
+                .toList(growable: false),
           ),
         );
         previousEnd = right;
@@ -451,9 +490,7 @@ class _WordLyricRenderCache {
             ? _layoutLine(char, strokeStyle)
             : null;
         final rotate = _alphanumericChar.hasMatch(char);
-        final charWidth = rotate
-            ? dimFillPainter.height
-            : dimFillPainter.width;
+        final charWidth = rotate ? dimFillPainter.height : dimFillPainter.width;
         final charHeight = rotate
             ? dimFillPainter.width
             : dimFillPainter.height;
@@ -571,19 +608,6 @@ class _WordLyricPainter extends CustomPainter {
       _ => 0.0,
     };
 
-    double sweepX = startX;
-    for (final segment in segments) {
-      final wp = _wordProgress(segment.wordStartMs, segment.wordLengthMs);
-      if (wp >= 1.0) {
-        sweepX = startX + segment.x + segment.width;
-      } else if (wp > 0) {
-        sweepX = startX + segment.x + segment.width * wp;
-        break;
-      } else {
-        break;
-      }
-    }
-
     if (vertical) {
       final startY = switch (textAlign) {
         TextAlign.left || TextAlign.start => 0.0,
@@ -608,7 +632,9 @@ class _WordLyricPainter extends CustomPainter {
       cache.paintLayer(canvas, centerX, bright: false);
       if (sweepY > startY) {
         canvas.save();
-        canvas.clipRect(Rect.fromLTRB(-1, startY - 1, size.width + 1, sweepY + 1));
+        canvas.clipRect(
+          Rect.fromLTRB(-1, startY - 1, size.width + 1, sweepY + 1),
+        );
         cache.paintLayer(canvas, centerX, bright: true);
         canvas.restore();
       }
@@ -616,9 +642,39 @@ class _WordLyricPainter extends CustomPainter {
     }
 
     cache.paintLayer(canvas, startX, bright: false);
-    if (sweepX > startX) {
+    final highlightPath = Path();
+    for (final segment in segments) {
+      final wp = _wordProgress(segment.wordStartMs, segment.wordLengthMs);
+      if (wp <= 0) break;
+      final boxes = segment.boxes;
+      if (boxes.isEmpty) {
+        final left = startX + segment.x;
+        final width = segment.width * wp.clamp(0.0, 1.0);
+        if (width > 0) {
+          highlightPath.addRect(
+            Rect.fromLTWH(left, segment.y, width, segment.height),
+          );
+        }
+      } else {
+        var remaining =
+            boxes.fold<double>(0.0, (sum, box) => sum + box.width) *
+            wp.clamp(0.0, 1.0);
+        for (final box in boxes) {
+          if (remaining <= 0) break;
+          final width = math.min(box.width, remaining);
+          if (width > 0) {
+            highlightPath.addRect(
+              Rect.fromLTWH(startX + box.left, box.top, width, box.height),
+            );
+          }
+          remaining -= box.width;
+        }
+      }
+      if (wp < 1.0) break;
+    }
+    if (!highlightPath.getBounds().isEmpty) {
       canvas.save();
-      canvas.clipRect(Rect.fromLTRB(startX, -1, sweepX + 1, size.height + 1));
+      canvas.clipPath(highlightPath);
       cache.paintLayer(canvas, startX, bright: true);
       canvas.restore();
     }

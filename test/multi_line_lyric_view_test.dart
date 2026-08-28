@@ -98,6 +98,103 @@ void main() {
     expect(find.text(''), findsNothing);
   });
 
+  testWidgets('wraps long horizontal lines within the viewport', (
+    tester,
+  ) async {
+    final previousMode = textDisplayController.useVerticalDisplayMode;
+    final previousRoman = textDisplayController.showRoman;
+    final previousTranslation = textDisplayController.showLyricTranslation;
+    final previousFontSize = textDisplayController.lyricFontSize;
+    addTearDown(() {
+      textDisplayController.useVerticalDisplayMode = previousMode;
+      textDisplayController.showRoman = previousRoman;
+      textDisplayController.showLyricTranslation = previousTranslation;
+      textDisplayController.lyricFontSize = previousFontSize;
+      DesktopLyricController.instance.fullLines.value = const [];
+    });
+    textDisplayController.useVerticalDisplayMode = false;
+    textDisplayController.showRoman = false;
+    textDisplayController.showLyricTranslation = false;
+    textDisplayController.lyricFontSize = 22;
+    const content =
+        'This is a deliberately long lyric line that should wrap across multiple lines in the desktop lyric viewport.';
+    DesktopLyricController.instance.fullLines.value = const [
+      FullLyricLine(1, content, null, null, 0, 3000, null),
+    ];
+    DesktopLyricController.instance.lyricLine.value =
+        const LyricLineChangedMessage(
+          content,
+          Duration(seconds: 3),
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          false,
+          1,
+        );
+
+    await tester.pumpWidget(buildSubject());
+    await tester.pumpAndSettle();
+
+    final display = tester.getRect(find.byType(LyricTextDisplay));
+    expect(display.width, 800);
+    expect(display.height, greaterThan(22));
+    expect(find.text(content), findsNWidgets(2));
+  });
+
+  testWidgets('wraps long word-by-word lines within the viewport', (
+    tester,
+  ) async {
+    final previousMode = textDisplayController.useVerticalDisplayMode;
+    final previousRoman = textDisplayController.showRoman;
+    final previousTranslation = textDisplayController.showLyricTranslation;
+    final previousFontSize = textDisplayController.lyricFontSize;
+    addTearDown(() {
+      textDisplayController.useVerticalDisplayMode = previousMode;
+      textDisplayController.showRoman = previousRoman;
+      textDisplayController.showLyricTranslation = previousTranslation;
+      textDisplayController.lyricFontSize = previousFontSize;
+      DesktopLyricController.instance.fullLines.value = const [];
+    });
+    textDisplayController.useVerticalDisplayMode = false;
+    textDisplayController.showRoman = false;
+    textDisplayController.showLyricTranslation = false;
+    textDisplayController.lyricFontSize = 22;
+    const content =
+        'This is a deliberately long karaoke lyric line that should wrap across multiple lines in the desktop lyric viewport.';
+    DesktopLyricController.instance.fullLines.value = const [
+      FullLyricLine(1, content, null, null, 0, 3000, [
+        LyricWord(0, 3000, content),
+      ]),
+    ];
+    DesktopLyricController.instance.lyricLine.value =
+        const LyricLineChangedMessage(
+          content,
+          Duration(seconds: 3),
+          null,
+          [LyricWord(0, 3000, content)],
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          true,
+          1,
+        );
+
+    await tester.pumpWidget(buildSubject());
+    await tester.pumpAndSettle();
+
+    final display = tester.getRect(find.byType(WordLyricText));
+    expect(display.width, 800);
+    expect(display.height, greaterThan(22));
+  });
+
   testWidgets('aligns the complete row at the requested edge', (tester) async {
     final previousMode = textDisplayController.useVerticalDisplayMode;
     final previousAlign = textDisplayController.lyricTextAlign;

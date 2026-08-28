@@ -251,7 +251,13 @@ class _MultiLineLyricViewState extends State<MultiLineLyricView>
                   _displayLines = displayLines;
                   _itemExtents = [
                     for (final line in displayLines)
-                      _lineExtent(context, line, controller, vertical),
+                      _lineExtent(
+                        context,
+                        line,
+                        controller,
+                        vertical,
+                        constraints.maxWidth,
+                      ),
                   ];
                   _leadingPadding = math.max(
                     0.0,
@@ -303,6 +309,7 @@ class _MultiLineLyricViewState extends State<MultiLineLyricView>
                       controller,
                       theme,
                       vertical,
+                      constraints.maxWidth,
                       _itemExtents[index],
                       index,
                       currentIndex,
@@ -334,6 +341,7 @@ class _MultiLineLyricViewState extends State<MultiLineLyricView>
     FullLyricLine line,
     TextDisplayController controller,
     bool vertical,
+    double availableWidth,
   ) {
     final isTransition = line.content == null || line.content!.trim().isEmpty;
     if (isTransition) return (vertical ? 80 : 40) + controller.lineGap;
@@ -349,6 +357,7 @@ class _MultiLineLyricViewState extends State<MultiLineLyricView>
         textScaler,
         direction,
         defaultStyle,
+        availableWidth,
       ),
     ];
     if (controller.showRoman && line.romanLyric != null) {
@@ -361,6 +370,7 @@ class _MultiLineLyricViewState extends State<MultiLineLyricView>
           textScaler,
           direction,
           defaultStyle,
+          availableWidth,
         ),
       );
     }
@@ -374,6 +384,7 @@ class _MultiLineLyricViewState extends State<MultiLineLyricView>
           textScaler,
           direction,
           defaultStyle,
+          availableWidth,
         ),
       );
     }
@@ -390,6 +401,7 @@ class _MultiLineLyricViewState extends State<MultiLineLyricView>
     TextScaler textScaler,
     TextDirection direction,
     TextStyle defaultStyle,
+    double availableWidth,
   ) {
     final style = defaultStyle.merge(
       TextStyle(
@@ -398,12 +410,16 @@ class _MultiLineLyricViewState extends State<MultiLineLyricView>
       ),
     );
     if (!vertical) {
-      final painter = TextPainter(
-        text: TextSpan(text: text, style: style),
-        textDirection: direction,
-        textScaler: textScaler,
-        maxLines: 1,
-      )..layout();
+      final painter =
+          TextPainter(
+            text: TextSpan(text: text, style: style),
+            textDirection: direction,
+            textScaler: textScaler,
+          )..layout(
+            maxWidth: availableWidth.isFinite && availableWidth > 0
+                ? availableWidth
+                : double.infinity,
+          );
       final height = painter.height;
       painter.dispose();
       return height;
@@ -431,6 +447,7 @@ class _MultiLineLyricViewState extends State<MultiLineLyricView>
     TextDisplayController controller,
     ThemeChangedMessage theme,
     bool vertical,
+    double availableWidth,
     double itemExtent,
     int index,
     int currentIndex,
@@ -518,6 +535,7 @@ class _MultiLineLyricViewState extends State<MultiLineLyricView>
         enableOutline: controller.enableStroke,
         outlineColor: outlineColor,
         vertical: vertical,
+        maxWidth: vertical ? null : availableWidth,
       );
     } else {
       lyricWidget = LyricTextDisplay(
@@ -532,6 +550,8 @@ class _MultiLineLyricViewState extends State<MultiLineLyricView>
         outlineWidth: lyricOutlineWidth(controller.lyricFontSize),
         textAlign: textAlign,
         enableOutline: controller.enableStroke,
+        wrap: !vertical,
+        maxWidth: vertical ? null : availableWidth,
       );
     }
 
@@ -544,6 +564,7 @@ class _MultiLineLyricViewState extends State<MultiLineLyricView>
         vertical,
         textAlign,
         outlineColor,
+        availableWidth,
       );
     }
     Widget? translationWidget;
@@ -555,6 +576,7 @@ class _MultiLineLyricViewState extends State<MultiLineLyricView>
         vertical,
         textAlign,
         outlineColor,
+        availableWidth,
       );
     }
     final children = <Widget>[];
@@ -641,6 +663,7 @@ class _MultiLineLyricViewState extends State<MultiLineLyricView>
     bool vertical,
     TextAlign textAlign,
     Color outlineColor,
+    double availableWidth,
   ) {
     return LyricTextDisplay(
       text: text,
@@ -654,6 +677,8 @@ class _MultiLineLyricViewState extends State<MultiLineLyricView>
       outlineWidth: lyricOutlineWidth(controller.translationFontSize),
       textAlign: textAlign,
       enableOutline: controller.enableStroke,
+      wrap: !vertical,
+      maxWidth: vertical ? null : availableWidth,
     );
   }
 

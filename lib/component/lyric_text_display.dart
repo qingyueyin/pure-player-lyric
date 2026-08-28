@@ -14,6 +14,8 @@ class LyricTextDisplay extends StatelessWidget {
   final double outlineWidth;
   final bool enableOutline;
   final TextAlign textAlign;
+  final bool wrap;
+  final double? maxWidth;
 
   const LyricTextDisplay({
     super.key,
@@ -24,6 +26,8 @@ class LyricTextDisplay extends StatelessWidget {
     this.outlineWidth = 2.0,
     this.enableOutline = true,
     this.textAlign = TextAlign.center,
+    this.wrap = false,
+    this.maxWidth,
   });
 
   Widget _buildText(String char) {
@@ -33,9 +37,9 @@ class LyricTextDisplay extends StatelessWidget {
       outlineColor: outlineColor,
       outlineWidth: outlineWidth,
       textAlign: textAlign,
-      maxLines: 1,
-      overflow: TextOverflow.clip,
-      softWrap: false,
+      maxLines: wrap ? null : 1,
+      overflow: wrap ? TextOverflow.visible : TextOverflow.clip,
+      softWrap: wrap,
       enableOutline: enableOutline,
     );
   }
@@ -43,7 +47,11 @@ class LyricTextDisplay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!vertical) {
-      return _buildText(text);
+      final child = _buildText(text);
+      if (maxWidth != null && maxWidth!.isFinite && maxWidth! > 0) {
+        return SizedBox(width: maxWidth, child: child);
+      }
+      return child;
     }
     if (text.length == 1 && !_alphanumericChar.hasMatch(text)) {
       return _buildText(text);
