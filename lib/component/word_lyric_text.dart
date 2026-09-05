@@ -274,7 +274,9 @@ class _WordLyricTextState extends State<WordLyricText>
       return const SizedBox.shrink();
     }
     return SizedBox(
-      width: cache.totalWidth,
+      width: widget.vertical
+          ? cache.totalWidth
+          : widget.maxWidth ?? cache.totalWidth,
       height: cache.totalHeight,
       child: CustomPaint(
         painter: _WordLyricPainter(

@@ -481,6 +481,7 @@ class TextDisplayController extends ChangeNotifier {
     }
     if (config['showDoubleLine'] != null) {
       showDoubleLine = config['showDoubleLine'] as bool;
+      if (showDoubleLine) useMultiLineMode = false;
       changed = true;
     }
     if (config['enablePinTop'] != null) {
@@ -489,6 +490,7 @@ class TextDisplayController extends ChangeNotifier {
     }
     if (config['useMultiLineMode'] != null) {
       useMultiLineMode = config['useMultiLineMode'] as bool;
+      if (useMultiLineMode) showDoubleLine = false;
       changed = true;
     }
     if (config['hidePlayedLines'] != null) {

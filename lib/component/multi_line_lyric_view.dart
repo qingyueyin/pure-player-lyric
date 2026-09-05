@@ -625,7 +625,7 @@ class _MultiLineLyricViewState extends State<MultiLineLyricView>
           );
     final lineWidget = RepaintBoundary(
       child: SizedBox(
-        width: vertical ? itemExtent : double.infinity,
+        width: vertical ? itemExtent : availableWidth,
         height: vertical ? double.infinity : itemExtent,
         child: Align(alignment: lineAlignment, child: content),
       ),

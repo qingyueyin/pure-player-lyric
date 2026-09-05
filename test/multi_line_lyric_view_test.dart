@@ -249,6 +249,60 @@ void main() {
     expect((first.right - second.right).abs(), lessThan(1));
   });
 
+  testWidgets('aligns word-by-word and static rows to the same edge', (
+    tester,
+  ) async {
+    final previousMode = textDisplayController.useVerticalDisplayMode;
+    final previousAlign = textDisplayController.lyricTextAlign;
+    final previousRoman = textDisplayController.showRoman;
+    final previousTranslation = textDisplayController.showLyricTranslation;
+    addTearDown(() {
+      textDisplayController.useVerticalDisplayMode = previousMode;
+      textDisplayController.lyricTextAlign = previousAlign;
+      textDisplayController.showRoman = previousRoman;
+      textDisplayController.showLyricTranslation = previousTranslation;
+      DesktopLyricController.instance.fullLines.value = const [];
+    });
+    textDisplayController.useVerticalDisplayMode = false;
+    textDisplayController.showRoman = false;
+    textDisplayController.showLyricTranslation = false;
+    DesktopLyricController.instance.fullLines.value = const [
+      FullLyricLine(1, 'word by word', null, null, 0, 3000, [
+        LyricWord(0, 3000, 'word by word'),
+      ]),
+      FullLyricLine(2, 'static row', null, null, 3000, 3000, null),
+    ];
+    DesktopLyricController.instance.lyricLine.value =
+        const LyricLineChangedMessage(
+          'word by word',
+          Duration(seconds: 3),
+          null,
+          [LyricWord(0, 3000, 'word by word')],
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          true,
+          1,
+        );
+
+    for (final alignment in [LyricTextAlign.left, LyricTextAlign.right]) {
+      textDisplayController.lyricTextAlign = alignment;
+      textDisplayController.notifyListeners();
+      await tester.pumpWidget(buildSubject());
+      await tester.pumpAndSettle();
+      final currentRect = tester.getRect(find.byType(WordLyricText));
+      final staticRect = tester.getRect(find.byType(LyricTextDisplay).last);
+      if (alignment == LyricTextAlign.left) {
+        expect(currentRect.left, closeTo(staticRect.left, 0.5));
+      } else {
+        expect(currentRect.right, closeTo(staticRect.right, 0.5));
+      }
+    }
+  });
+
   testWidgets('renders an interlude snapshot line as transition dots', (
     tester,
   ) async {
