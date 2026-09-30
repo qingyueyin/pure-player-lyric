@@ -123,7 +123,7 @@ class _DesktopLyricBodyState extends State<DesktopLyricBody> {
         point.ref.y < rect.ref.bottom;
     ffi.calloc.free(point);
     ffi.calloc.free(rect);
-    final hidden = !inside;
+    final hidden = inside;
     if (_hoverHidden == hidden || !mounted) return;
     setState(() => _hoverHidden = hidden);
   }
