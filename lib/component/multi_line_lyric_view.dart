@@ -18,6 +18,7 @@ const _currentLineAlignment = 0.5;
 const _inactiveScale = 0.9;
 const _secondaryGap = 4.0;
 const _playedLineOpacity = 0.45;
+const _playedRevealDuration = Duration(seconds: 3);
 final _lineSpring = SpringDescription(mass: 1, stiffness: 100, damping: 17);
 final _staggerSpring = SpringDescription.withDampingRatio(
   mass: 1,
@@ -63,6 +64,8 @@ class _MultiLineLyricViewState extends State<MultiLineLyricView>
   int _staggerGeneration = 0;
   int _staggerVisibleStartIndex = 0;
   double _staggerShift = 0;
+  bool _revealPlayedLines = false;
+  Timer? _playedRevealTimer;
 
   GlobalKey _keyForLine(int lineId) =>
       _lineKeys.putIfAbsent(lineId, GlobalKey.new);
@@ -101,6 +104,17 @@ class _MultiLineLyricViewState extends State<MultiLineLyricView>
       _followPaused = false;
       _followCurrentLine(animate: true);
     });
+  }
+
+  /// 用户滚动期间临时显示已播放歌词，停止滚动超时后恢复隐藏
+  void _revealPlayed() {
+    _playedRevealTimer?.cancel();
+    _playedRevealTimer = Timer(_playedRevealDuration, () {
+      if (!mounted) return;
+      setState(() => _revealPlayedLines = false);
+    });
+    if (_revealPlayedLines) return;
+    setState(() => _revealPlayedLines = true);
   }
 
   void _scheduleFollow(int? lineId, bool vertical, {required bool forceJump}) {
@@ -325,6 +339,11 @@ class _MultiLineLyricViewState extends State<MultiLineLyricView>
                           notification is UserScrollNotification &&
                               notification.direction != ScrollDirection.idle;
                       if (isUserScroll && !_programmaticScroll) _pauseFollow();
+                      if (!_programmaticScroll &&
+                          (notification is ScrollStartNotification ||
+                              notification is ScrollUpdateNotification)) {
+                        _revealPlayed();
+                      }
                       return false;
                     },
                     child: list,
@@ -463,7 +482,9 @@ class _MultiLineLyricViewState extends State<MultiLineLyricView>
         : playedColor.withValues(alpha: 0.55);
     final color = isCurrent ? playedColor : unplayedColor;
     final lineOpacity = isPlayed
-        ? (controller.hidePlayedLines ? 0.0 : _playedLineOpacity)
+        ? (controller.hidePlayedLines && !_revealPlayedLines
+              ? 0.0
+              : _playedLineOpacity)
         : 1.0;
     final outlineColor = lyricOutlineColor(controller.useLightOutline);
     final textAlign = switch (controller.lyricTextAlign) {
@@ -686,6 +707,7 @@ class _MultiLineLyricViewState extends State<MultiLineLyricView>
   void dispose() {
     _followToken++;
     _layoutToken++;
+    _playedRevealTimer?.cancel();
     _scrollAnimation.dispose();
     _scrollController.dispose();
     super.dispose();
