@@ -145,6 +145,7 @@ class TextDisplayController extends ChangeNotifier {
   bool enableStroke = true;
   bool enablePinTop = true;
   bool useLightOutline = false;
+  bool iconFollowThemeColor = true;
   bool useVerticalDisplayMode = false;
   bool showDoubleLine = false;
   bool useMultiLineMode = false;
@@ -473,6 +474,10 @@ class TextDisplayController extends ChangeNotifier {
     }
     if (config['useLightOutline'] != null) {
       useLightOutline = config['useLightOutline'] as bool;
+      changed = true;
+    }
+    if (config['iconFollowThemeColor'] != null) {
+      iconFollowThemeColor = config['iconFollowThemeColor'] as bool;
       changed = true;
     }
     if (config['useVerticalDisplayMode'] != null) {

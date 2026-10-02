@@ -10,10 +10,19 @@ class ActionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = context.watch<ThemeChangedMessage>();
-    final lyricTextAlign = context
-        .select<TextDisplayController, LyricTextAlign>(
-          (controller) => controller.lyricTextAlign,
-        );
+    final textDisplayController = context.watch<TextDisplayController>();
+    final lyricTextAlign = textDisplayController.lyricTextAlign;
+    // 图标颜色独立于歌词文字配色：开 → 主题色，关 → 固定前景色
+    final color = textDisplayController.iconFollowThemeColor
+        ? Color(theme.primary)
+        : Color(theme.onSurface);
+    // 图标没有描边，用同色系光晕兜底，保证任意桌面背景下可见
+    final iconShadows = [
+      Shadow(
+        color: lyricOutlineColor(textDisplayController.useLightOutline),
+        blurRadius: 3,
+      ),
+    ];
     const spacer = SizedBox(width: 8);
 
     final mainAlignment = switch (lyricTextAlign) {
@@ -32,16 +41,16 @@ class ActionRow extends StatelessWidget {
             DesktopLyricController.instance.setLocked(true);
             DesktopLyricController.sendControlEvent(ControlEvent.lock);
           },
-          color: Color(theme.onSurface),
-          icon: const Icon(Icons.lock),
+          color: color,
+          icon: Icon(Icons.lock, shadows: iconShadows),
         ),
         spacer,
         IconButton(
           onPressed: () {
             DesktopLyricController.sendControlEvent(ControlEvent.previousAudio);
           },
-          color: Color(theme.onSurface),
-          icon: const Icon(Icons.skip_previous),
+          color: color,
+          icon: Icon(Icons.skip_previous, shadows: iconShadows),
         ),
         spacer,
         ValueListenableBuilder(
@@ -52,8 +61,11 @@ class ActionRow extends StatelessWidget {
                 isPlaying ? ControlEvent.pause : ControlEvent.start,
               );
             },
-            color: Color(theme.onSurface),
-            icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow),
+            color: color,
+            icon: Icon(
+              isPlaying ? Icons.pause : Icons.play_arrow,
+              shadows: iconShadows,
+            ),
           ),
         ),
         spacer,
@@ -61,16 +73,16 @@ class ActionRow extends StatelessWidget {
           onPressed: () {
             DesktopLyricController.sendControlEvent(ControlEvent.nextAudio);
           },
-          color: Color(theme.onSurface),
-          icon: const Icon(Icons.skip_next),
+          color: color,
+          icon: Icon(Icons.skip_next, shadows: iconShadows),
         ),
         spacer,
         IconButton(
           onPressed: () {
             DesktopLyricController.sendControlEvent(ControlEvent.close);
           },
-          color: Color(theme.onSurface),
-          icon: const Icon(Icons.close),
+          color: color,
+          icon: Icon(Icons.close, shadows: iconShadows),
         ),
         if (lyricTextAlign != LyricTextAlign.right) const Spacer(),
       ],

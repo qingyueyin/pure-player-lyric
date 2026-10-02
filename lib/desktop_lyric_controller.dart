@@ -283,6 +283,9 @@ class DesktopLyricController {
     final windowHwnd = hWnd;
     if (windowHwnd == null || windowHwnd == 0) return;
     final currentTheme = theme.value;
+    final iconColor = textDisplayController.iconFollowThemeColor
+        ? Color(currentTheme.primary)
+        : Color(currentTheme.onSurface);
     win32.PostMessage(
       windowHwnd,
       _setUnlockButtonAlignmentMessage,
@@ -292,7 +295,7 @@ class DesktopLyricController {
     win32.PostMessage(
       windowHwnd,
       _setUnlockButtonColorMessage,
-      currentTheme.onSurface,
+      iconColor.toARGB32(),
       0,
     );
   }
