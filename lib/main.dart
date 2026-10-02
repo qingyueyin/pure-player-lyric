@@ -142,6 +142,7 @@ class DesktopLyricApp extends StatelessWidget {
         value: DesktopLyricController.instance.theme,
         child: MaterialApp(
           themeMode: isDarkMode ? ThemeMode.dark : ThemeMode.light,
+          scrollBehavior: const _NoScrollbarBehavior(),
           localizationsDelegates: GlobalMaterialLocalizations.delegates,
           supportedLocales: supportedLocales,
           home: const DesktopLyricBody(),
@@ -166,9 +167,21 @@ class DesktopLyricApp extends StatelessWidget {
     ),
     Locale.fromSubtags(
       languageCode: 'zh',
-      scriptCode: 'Hant',
+      scriptCode: 'Hans',
       countryCode: 'HK',
     ),
     Locale("en", "US"),
   ];
+}
+
+// 歌词窗口不需要自动滚动条，框架默认会给 Windows 上的垂直滚动组件加
+class _NoScrollbarBehavior extends MaterialScrollBehavior {
+  const _NoScrollbarBehavior();
+
+  @override
+  Widget buildScrollbar(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) => child;
 }
