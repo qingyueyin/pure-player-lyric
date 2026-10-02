@@ -16,7 +16,7 @@ constexpr UINT kUnlockHoverIntervalMs = 100;
 constexpr uint64_t kUnlockHoverDelayMs = 2000;
 constexpr int kUnlockButtonLogicalSize = 48;
 constexpr int kUnlockButtonLogicalMargin = 8;
-constexpr COLORREF kUnlockTransparentColor = RGB(255, 0, 255);
+constexpr BYTE kUnlockBackdropAlpha = 180;
 constexpr wchar_t kUnlockGlyph[] = {0xE3B0, L'\0'};
 constexpr wchar_t kUnlockButtonClassName[] =
     L"PURE_PLAYER_LYRIC_UNLOCK_BUTTON";
@@ -32,6 +32,14 @@ bool ContainsPoint(const RECT& rect, const POINT& point) {
 
 COLORREF ColorRefFromArgb(uint32_t argb) {
   return RGB((argb >> 16) & 0xFF, (argb >> 8) & 0xFF, argb & 0xFF);
+}
+
+// Dark glyphs get a light backdrop and vice versa, so the button stays
+// readable on any desktop background.
+COLORREF BackdropColorFor(COLORREF color) {
+  const int luminance = (GetRValue(color) * 299 + GetGValue(color) * 587 +
+                         GetBValue(color) * 114) / 1000;
+  return luminance < 140 ? RGB(255, 255, 255) : RGB(0, 0, 0);
 }
 
 std::wstring ExecutableDirectory() {
@@ -193,8 +201,8 @@ void FlutterWindow::ShowUnlockButton() {
     if (unlock_button_ == nullptr) {
       return;
     }
-    SetLayeredWindowAttributes(unlock_button_, kUnlockTransparentColor, 0,
-                               LWA_COLORKEY);
+    SetLayeredWindowAttributes(unlock_button_, 0, kUnlockBackdropAlpha,
+                               LWA_ALPHA);
     LoadMaterialIconsFont();
   }
 
@@ -290,9 +298,11 @@ LRESULT CALLBACK FlutterWindow::UnlockButtonWindowProc(
       const COLORREF icon_color = owner != nullptr
                                       ? owner->unlock_button_icon_color_
                                       : RGB(255, 255, 255);
-      HBRUSH transparent = CreateSolidBrush(kUnlockTransparentColor);
-      FillRect(dc, &client, transparent);
-      DeleteObject(transparent);
+      // The window region is an ellipse, so filling the whole client rect
+      // already produces a round backdrop.
+      HBRUSH backdrop = CreateSolidBrush(BackdropColorFor(icon_color));
+      FillRect(dc, &client, backdrop);
+      DeleteObject(backdrop);
 
       const int size = client.right - client.left;
       const auto px = [size](int logical) {
@@ -301,12 +311,12 @@ LRESULT CALLBACK FlutterWindow::UnlockButtonWindowProc(
       RECT content = client;
 
       SetBkMode(dc, TRANSPARENT);
-      SetTextColor(dc, icon_color);
       const auto icon_font = owner != nullptr
                                  ? owner->EnsureUnlockIconFont(px(24))
                                  : nullptr;
       if (icon_font != nullptr) {
         const auto old_font = SelectObject(dc, icon_font);
+        SetTextColor(dc, icon_color);
         DrawText(dc, kUnlockGlyph, -1, &content,
                  DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
         SelectObject(dc, old_font);
