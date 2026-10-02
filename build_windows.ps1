@@ -30,6 +30,24 @@ if (Test-Path $ephemeralDir) {
     Remove-Item -Path $ephemeralDir -Recurse -Force
 }
 
+# 每次构建前清掉旧的 native assets 中间产物：
+# .dart_tool\flutter_build 下按构建哈希堆目录，build\native_assets 每次都覆盖写
+$flutterBuildDir = Join-Path $PSScriptRoot ".dart_tool\flutter_build"
+if (Test-Path $flutterBuildDir) {
+    $staleDirs = Get-ChildItem -Path $flutterBuildDir -Directory -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -Skip 1
+    if ($staleDirs) {
+        Write-Host "Cleaning stale native assets build caches ($($staleDirs.Count) dirs)..." -ForegroundColor Yellow
+        $staleDirs | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+$nativeAssetsDir = Join-Path $PSScriptRoot "build\native_assets"
+if (Test-Path $nativeAssetsDir) {
+    Write-Host "Cleaning $nativeAssetsDir..." -ForegroundColor Yellow
+    Remove-Item -Path $nativeAssetsDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 $VerbosePreference = "Continue"
 $DebugPreference = "Continue"
 
@@ -145,6 +163,9 @@ New-Item -ItemType Directory -Force -Path $finalOutputDir | Out-Null
 
 Write-Host "Copying build artifacts to output directory..." -ForegroundColor Cyan
 Copy-Item -Path "$buildDir\*" -Destination $finalOutputDir -Recurse -Force
+
+# native_assets.json 是构建中间清单，不进发布目录
+Remove-Item -Path (Join-Path $finalOutputDir "native_assets.json") -Force -ErrorAction SilentlyContinue
 
 Write-Host "`n========================================" -ForegroundColor Cyan
 Write-Host "Build completed successfully!" -ForegroundColor Green
