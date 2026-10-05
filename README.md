@@ -23,13 +23,13 @@
 ## 界面预览
 
 <p align="center">
-  <img src="screenshot/左对齐主题色歌词.png" width="720" height="198" alt="左对齐主题色歌词">
+  <img src="screenshot/左对齐主题色歌词.png" height="150" alt="左对齐主题色歌词">
 </p>
 <p align="center">
-  <img src="screenshot/居中主题色歌词信息歌词.png" width="720" height="198" alt="居中主题色歌词">
+  <img src="screenshot/居中主题色歌词信息歌词.png" height="150" alt="居中主题色歌词">
 </p>
 <p align="center">
-  <img src="screenshot/右对齐主题色歌词.png" width="720" height="198" alt="右对齐主题色歌词">
+  <img src="screenshot/右对齐主题色歌词.png" height="150" alt="右对齐主题色歌词">
 </p>
 
 ---
@@ -68,18 +68,6 @@ flutter build windows --release
 ## 贡献者
 
 [![contrib.rocks](https://contrib.rocks/image?repo=qingyueyin/pure-player-lyric&max=1000&v=2)](https://github.com/qingyueyin/pure-player-lyric/graphs/contributors)
-
----
-
-## Star History
-
-<a href="https://www.star-history.com/?repos=qingyueyin%2Fpure-player-lyric&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=qingyueyin/pure-player-lyric&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=qingyueyin/pure-player-lyric&type=date&theme=light&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=qingyueyin/pure-player-lyric&type=date&theme=light&legend=top-left" />
- </picture>
-</a>
 
 ---
 
