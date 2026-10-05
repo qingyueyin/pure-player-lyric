@@ -176,6 +176,8 @@ class TextDisplayController extends ChangeNotifier {
   Timer? _saveDebounce;
 
   void _scheduleSave() {
+    // 测试不写磁盘，避免挂起 Timer、改到用户设置
+    if (Platform.environment.containsKey('FLUTTER_TEST')) return;
     _saveDebounce?.cancel();
     _saveDebounce = Timer(const Duration(milliseconds: 500), save);
   }
