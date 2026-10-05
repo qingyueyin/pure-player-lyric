@@ -66,6 +66,7 @@ class _MultiLineLyricViewState extends State<MultiLineLyricView>
   double _staggerShift = 0;
   bool _revealPlayedLines = false;
   Timer? _playedRevealTimer;
+  int? _extentMetricsKey;
 
   GlobalKey _keyForLine(int lineId) =>
       _lineKeys.putIfAbsent(lineId, GlobalKey.new);
@@ -260,19 +261,36 @@ class _MultiLineLyricViewState extends State<MultiLineLyricView>
                   if (displayLines.isEmpty || !viewportExtent.isFinite) {
                     _displayLines = const [];
                     _itemExtents = const [];
+                    _extentMetricsKey = null;
                     return const SizedBox.shrink();
                   }
                   _displayLines = displayLines;
-                  _itemExtents = [
-                    for (final line in displayLines)
-                      _lineExtent(
-                        context,
-                        line,
-                        controller,
-                        vertical,
-                        constraints.maxWidth,
-                      ),
-                  ];
+                  final extentKey = Object.hash(
+                    vertical,
+                    viewportExtent.round(),
+                    constraints.maxWidth.round(),
+                    controller.lyricFontSize.round(),
+                    controller.translationFontSize.round(),
+                    controller.lyricFontWeight,
+                    controller.lineGap.round(),
+                    controller.showRoman,
+                    controller.showLyricTranslation,
+                    MediaQuery.textScalerOf(context).scale(100).round(),
+                    identityHashCode(lines),
+                  );
+                  if (snapshotChanged || extentKey != _extentMetricsKey) {
+                    _extentMetricsKey = extentKey;
+                    _itemExtents = [
+                      for (final line in displayLines)
+                        _lineExtent(
+                          context,
+                          line,
+                          controller,
+                          vertical,
+                          constraints.maxWidth,
+                        ),
+                    ];
+                  }
                   _leadingPadding = math.max(
                     0.0,
                     (viewportExtent - _itemExtents.first) / 2,

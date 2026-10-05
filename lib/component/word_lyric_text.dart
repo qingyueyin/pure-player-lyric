@@ -240,9 +240,12 @@ class _WordLyricTextState extends State<WordLyricText>
         _stopwatch.stop();
         _baseProgressMs = _currentProgressMs();
         _stopwatch.reset();
-        _progressMs.value = _highlightProgressMs(_baseProgressMs);
       }
       if (_ticker.isActive) _ticker.stop();
+      final next = _highlightProgressMs(_baseProgressMs);
+      if (next != _progressMs.value) {
+        _progressMs.value = next;
+      }
     }
   }
 
