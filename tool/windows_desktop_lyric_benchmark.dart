@@ -25,16 +25,16 @@ const _lineBWords = <LyricWord>[
   LyricWord(2400, 1200, 'shaped text'),
 ];
 
-LyricLineChangedMessage _makeLine(
-  int id,
-  String content,
-  List<LyricWord> words,
-) {
+const _lineAText = '流动的色彩跟随每一次心跳';
+const _lineBText = 'A🎵 family 👨‍👩‍👧‍👦 and é shaped text';
+
+LyricLineChangedMessage _makeLine(int id) {
+  final useA = id.isOdd;
   return LyricLineChangedMessage(
-    content,
+    useA ? _lineAText : _lineBText,
     const Duration(seconds: 8),
     null,
-    words,
+    useA ? _lineAWords : _lineBWords,
     0,
     null,
     null,
@@ -44,6 +44,22 @@ LyricLineChangedMessage _makeLine(
     true,
     id,
   );
+}
+
+List<FullLyricLine> _makeSnapshot({int count = 32}) {
+  return List<FullLyricLine>.generate(count, (index) {
+    final id = index + 1;
+    final useA = id.isOdd;
+    return FullLyricLine(
+      id,
+      useA ? _lineAText : _lineBText,
+      null,
+      null,
+      index * 8000,
+      8000,
+      useA ? _lineAWords : _lineBWords,
+    );
+  });
 }
 
 void main() {
@@ -74,11 +90,12 @@ class _BenchmarkAppState extends State<_BenchmarkApp> {
   late LyricLineChangedMessage _currentLine;
   bool _showFullDesktopUi = false;
   bool _disposed = false;
+  double _viewportHeight = 180;
 
   @override
   void initState() {
     super.initState();
-    _currentLine = _makeLine(1, '流动的色彩跟随每一次心跳', _lineAWords);
+    _currentLine = _makeLine(1);
     SchedulerBinding.instance.addTimingsCallback(_collectTimings);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_runBenchmark());
@@ -101,24 +118,9 @@ class _BenchmarkAppState extends State<_BenchmarkApp> {
       );
 
       _setPlaying(true);
-      debugPrint('DESKTOP_LYRIC_PHASE word_line_switch');
-      await SchedulerBinding.instance.endOfFrame;
-      _timings.clear();
-      final rssBefore = ProcessInfo.currentRss;
-      final switchClock = Stopwatch()..start();
-      for (var index = 0; index < 16; index++) {
+      reports.add(await _measureLineSwitch('word_line_switch', 16, (index) {
         _setLine(index.isEven ? 1 : 2);
-        await Future<void>.delayed(const Duration(milliseconds: 450));
-      }
-      switchClock.stop();
-      reports.add({
-        'phase': 'word_line_switch',
-        'frames': _timings.length,
-        'rssBeforeMb': _toMb(rssBefore),
-        'rssAfterMb': _toMb(ProcessInfo.currentRss),
-        'wallMs': switchClock.elapsedMilliseconds,
-        ..._frameReport(),
-      });
+      }));
 
       setState(() => _showFullDesktopUi = true);
       _setLine(1);
@@ -133,24 +135,30 @@ class _BenchmarkAppState extends State<_BenchmarkApp> {
       );
 
       _setPlaying(true);
-      debugPrint('DESKTOP_LYRIC_PHASE desktop_line_switch');
-      await SchedulerBinding.instance.endOfFrame;
-      _timings.clear();
-      final desktopRssBefore = ProcessInfo.currentRss;
-      final desktopSwitchClock = Stopwatch()..start();
-      for (var index = 0; index < 16; index++) {
+      reports.add(await _measureLineSwitch('desktop_line_switch', 16, (index) {
         _setLine(index.isEven ? 1 : 2);
-        await Future<void>.delayed(const Duration(milliseconds: 450));
-      }
-      desktopSwitchClock.stop();
-      reports.add({
-        'phase': 'desktop_line_switch',
-        'frames': _timings.length,
-        'rssBeforeMb': _toMb(desktopRssBefore),
-        'rssAfterMb': _toMb(ProcessInfo.currentRss),
-        'wallMs': desktopSwitchClock.elapsedMilliseconds,
-        ..._frameReport(),
-      });
+      }));
+
+      // 不 notifyListeners，避免把多行开关写进用户设置
+      textDisplayController.useMultiLineMode = true;
+      textDisplayController.showDoubleLine = false;
+      _desktopController.fullLines.value = _makeSnapshot();
+      setState(() => _viewportHeight = 480);
+      _setLine(1);
+      await Future<void>.delayed(const Duration(seconds: 1));
+      reports.add(
+        await _measurePhase('multiline_active', const Duration(seconds: 12)),
+      );
+
+      reports.add(await _measurePauseHitch('multiline_pause_hitch'));
+      reports.add(
+        await _measurePhase('multiline_paused', const Duration(seconds: 3)),
+      );
+
+      _setPlaying(true);
+      reports.add(await _measureLineSwitch('multiline_line_switch', 16, (index) {
+        _setLine(index + 1);
+      }));
 
       debugPrint('DESKTOP_LYRIC_REPORT ${jsonEncode(reports)}');
     } catch (error, stackTrace) {
@@ -186,6 +194,49 @@ class _BenchmarkAppState extends State<_BenchmarkApp> {
     };
   }
 
+  Future<Map<String, Object?>> _measurePauseHitch(String name) async {
+    debugPrint('DESKTOP_LYRIC_PHASE $name');
+    await SchedulerBinding.instance.endOfFrame;
+    _timings.clear();
+    final rssBefore = ProcessInfo.currentRss;
+    _setPlaying(false);
+    await SchedulerBinding.instance.endOfFrame;
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    await SchedulerBinding.instance.endOfFrame;
+    return {
+      'phase': name,
+      'frames': _timings.length,
+      'rssBeforeMb': _toMb(rssBefore),
+      'rssAfterMb': _toMb(ProcessInfo.currentRss),
+      ..._frameReport(),
+    };
+  }
+
+  Future<Map<String, Object?>> _measureLineSwitch(
+    String name,
+    int count,
+    void Function(int index) switchLine,
+  ) async {
+    debugPrint('DESKTOP_LYRIC_PHASE $name');
+    await SchedulerBinding.instance.endOfFrame;
+    _timings.clear();
+    final rssBefore = ProcessInfo.currentRss;
+    final switchClock = Stopwatch()..start();
+    for (var index = 0; index < count; index++) {
+      switchLine(index);
+      await Future<void>.delayed(const Duration(milliseconds: 450));
+    }
+    switchClock.stop();
+    return {
+      'phase': name,
+      'frames': _timings.length,
+      'rssBeforeMb': _toMb(rssBefore),
+      'rssAfterMb': _toMb(ProcessInfo.currentRss),
+      'wallMs': switchClock.elapsedMilliseconds,
+      ..._frameReport(),
+    };
+  }
+
   Map<String, Object?> _frameReport() {
     final buildMs = _timings
         .map((timing) => timing.buildDuration.inMicroseconds / 1000)
@@ -200,7 +251,11 @@ class _BenchmarkAppState extends State<_BenchmarkApp> {
       'buildP95Ms': _percentile(buildMs, 0.95),
       'rasterP95Ms': _percentile(rasterMs, 0.95),
       'totalP95Ms': _percentile(totalMs, 0.95),
+      'maxTotalMs': totalMs.isEmpty ? 0 : totalMs.reduce((a, b) => a > b ? a : b),
+      'maxBuildMs': buildMs.isEmpty ? 0 : buildMs.reduce((a, b) => a > b ? a : b),
+      'maxRasterMs': rasterMs.isEmpty ? 0 : rasterMs.reduce((a, b) => a > b ? a : b),
       'over16ms': totalMs.where((value) => value > 16.67).length,
+      'over32ms': totalMs.where((value) => value > 32).length,
     };
   }
 
@@ -233,13 +288,7 @@ class _BenchmarkAppState extends State<_BenchmarkApp> {
 
   void _setLine(int id) {
     if (_disposed) return;
-    final nextLine = id == 1
-        ? _makeLine(1, '流动的色彩跟随每一次心跳', _lineAWords)
-        : _makeLine(
-            2,
-            'A🎵 family 👨‍👩‍👧‍👦 and é shaped text',
-            _lineBWords,
-          );
+    final nextLine = _makeLine(id);
     setState(() => _currentLine = nextLine);
     final progress = LyricProgressChangedMessage(
       0,
@@ -276,7 +325,7 @@ class _BenchmarkAppState extends State<_BenchmarkApp> {
             child: RepaintBoundary(
               child: SizedBox(
                 width: 1000,
-                height: 180,
+                height: _viewportHeight,
                 child: _showFullDesktopUi
                     ? const DesktopLyricForeground(isHovering: false)
                     : Center(
